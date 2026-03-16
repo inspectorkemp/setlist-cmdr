@@ -393,19 +393,63 @@ async def set_live(state: LiveIn):
     await manager.broadcast({"type": "live_update", **live_state})
     return live_state
 
+# ── Metro state (in-memory) ───────────────────────────────────
+metro_state = {
+    "on":           False,
+    "bpm":          None,
+    "beats_per_bar": 4,
+    "server_epoch": None,   # ms timestamp of beat 0
+}
+
 @app.put("/api/metro")
 async def set_metro_stub():
     return {"ok": True}
 
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
+    import time, json
     await manager.connect(websocket)
     await websocket.send_json({"type": "live_update", **live_state})
+    # Send current metro state to newly connected client
+    if metro_state["on"]:
+        await websocket.send_json({"type": "metronome_start", **metro_state})
     await manager.broadcast_roster()
     try:
         while True:
             data = await websocket.receive_text()
-            if data.startswith("name:"):
+
+            # NTP-style clock sync: client sends {"type":"sync","t0":clientMs}
+            if data.startswith("{"):
+                try:
+                    msg = json.loads(data)
+                    if msg.get("type") == "sync":
+                        server_now = time.time() * 1000
+                        await websocket.send_json({
+                            "type":    "sync_reply",
+                            "t0":      msg["t0"],
+                            "server":  server_now,
+                        })
+                    elif msg.get("type") == "metronome_start":
+                        # Leader broadcasting start to all musicians
+                        metro_state.update({
+                            "on":            True,
+                            "bpm":           msg["bpm"],
+                            "beats_per_bar": msg.get("beats_per_bar", 4),
+                            "server_epoch":  msg["server_epoch"],
+                        })
+                        await manager.broadcast({
+                            "type":         "metronome_start",
+                            "bpm":          metro_state["bpm"],
+                            "beats_per_bar": metro_state["beats_per_bar"],
+                            "server_epoch": metro_state["server_epoch"],
+                        })
+                    elif msg.get("type") == "metronome_stop":
+                        metro_state["on"] = False
+                        metro_state["server_epoch"] = None
+                        await manager.broadcast({"type": "metronome_stop"})
+                except Exception:
+                    pass
+            elif data.startswith("name:"):
                 manager.set_name(websocket, data[5:].strip()[:40])
                 await manager.broadcast_roster()
             # else: keep-alive ping — ignore
