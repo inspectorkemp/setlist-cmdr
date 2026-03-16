@@ -17,7 +17,7 @@ Full CRUD management for your entire repertoire. Each song stores title, artist,
 Create multiple setlists. Add songs from your library, reorder by dragging, add section labels between songs, and see a running total duration. Rename by clicking the title or the edit button. Clone any setlist to use it as a starting point. Mark setlists as Active or Inactive -- inactive setlists are hidden from the Live Control dropdown so they cannot be accidentally deployed. Drag to reorder the setlist list itself.
 
 **Live Control**
-Select an active setlist and hit Deploy. All connected musician screens update instantly via WebSocket. Navigate with Prev/Next buttons, or click any song in the queue to jump directly to it. Each musician sees the current song title, key, tempo, and a next-song ribbon so they can prepare. End the show with Stand Down -- all musician screens return to standby.
+Select an active setlist and hit "ENGAGE" to start a set. All connected musician screens update instantly via WebSocket. Navigate with Prev/Next buttons, or click any song in the queue to jump directly to it. Each musician sees the current song title, key, tempo, and a next-song ribbon so they can prepare. End the show with Stand Down -- all musician screens return to standby.
 
 **Signal messages**
 Send instant one-tap text alerts to all musician screens during a live show. Eight configurable slots mapped to F1-F8 keyboard hotkeys. Default signals: RUSHING, DRAGGING, CHORUS, BRIDGE, KEEP GOING, WRAP IT UP, HOLD HERE, EYES ON ME. Labels are fully editable and saved per device. A large amber banner slides down on every musician screen and auto-dismisses after 3 seconds.
