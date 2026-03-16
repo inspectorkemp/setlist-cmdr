@@ -7,6 +7,7 @@
 A full-featured setlist and song management system that runs entirely on your local network. No internet required. Run it on your PC for testing and development, then deploy to a Raspberry Pi for gigs. Musicians connect their tablets or phones to the same WiFi and open a browser -- nothing to install on their devices.
 
 ---
+<img width="1092" height="79" alt="image" src="https://github.com/user-attachments/assets/0bc14d82-c06d-4c41-be0a-3f2689737f2c" />
 
 ## Features
 
