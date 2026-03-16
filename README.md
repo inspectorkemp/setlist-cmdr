@@ -7,7 +7,6 @@
 A full-featured setlist and song management system that runs entirely on your local network. No internet required. Run it on your PC for testing and development, then deploy to a Raspberry Pi for gigs. Musicians connect their tablets or phones to the same WiFi and open a browser -- nothing to install on their devices.
 
 ---
-<img width="1092" height="79" alt="image" src="https://github.com/user-attachments/assets/0bc14d82-c06d-4c41-be0a-3f2689737f2c" />
 
 ## Features
 
@@ -43,6 +42,7 @@ A toggle in the nav bar switches between iPad mode (touch-optimized: larger tap 
 
 **Progressive Web App**
 Both the leader and musician pages can be installed to the home screen on iPad, iPhone, and Android. Once installed, the app launches full-screen with no browser chrome and the interface shell loads from the device cache instantly -- even before the Pi's WiFi hotspot is fully up.
+
 
 ---
 
@@ -127,6 +127,9 @@ After installation, the app launches full-screen with the Setlist CMDR icon. Bot
 ---
 
 ## Band leader workflow
+<div align="center">
+<img width="1090" height="1289" alt="image" src="https://github.com/user-attachments/assets/a9eaa84c-dfdb-4653-860f-03c6177deb54" />
+</div>
 
 1. Open `http://<pi-ip>:8000/leader` in your browser or installed PWA
 2. Go to the **Songs** tab -- add your entire repertoire. Paste in lyrics and ChordPro chords. Set tempo and key on each song so the metronome and transpose features work correctly.
@@ -134,7 +137,10 @@ After installation, the app launches full-screen with the Setlist CMDR icon. Bot
 4. Mark setlists you are not currently using as Inactive so they do not clutter the Live Control picker.
 5. Go to the **Live Control** tab before the show -- select your setlist and hit **Deploy** when you are ready to go live.
 6. During the show, use **Prev** and **Next** to navigate, or click any song in the queue to jump directly. Use the signal buttons (or F1-F8 on a keyboard) to flash messages to all musicians.
-
+   
+<div align="center">
+<img width="1094" height="430" alt="image" src="https://github.com/user-attachments/assets/ffefcad8-ab72-465f-b0c9-1909957992a3" />
+</div>
 ---
 
 ## Musician workflow
