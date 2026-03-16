@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=1.0, maximum-scale=3.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Setlist CMDR — Stage</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+<meta name="theme-color" content="#08080f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
+<style>
+:root {
+  --bg:        #08080f;
+  --surface:   #111118;
+  --border:    #1c1c26;
+  --amber:     #f59e0b;
+  --amber-glow:rgba(245,158,11,0.18);
+  --text:      #ebebf0;
+  --dim:       #52525b;
+  --green:     #22c55e;
+  --red:       #ef4444;
+  --blue:      #60a5fa;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+            font-family: 'DM Sans', sans-serif; touch-action: manipulation; }
+
+/* ── Name screen ──────────────────────────────────────────── */
+#name-screen {
+  position:fixed; inset:0; background:var(--bg); z-index:200;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:28px; padding:40px;
+}
+/* name-screen h1 replaced by logo image */
+#name-screen p { color:var(--dim); font-size:1.05rem; }
+#name-input {
+  background:var(--surface); border:2px solid var(--border); border-radius:14px;
+  color:var(--text); font-family:'DM Sans',sans-serif; font-size:1.5rem;
+  padding:16px 24px; text-align:center; width:100%; max-width:380px; outline:none;
+  transition:border-color .2s;
+}
+#name-input:focus { border-color:var(--amber); }
+.join-btn {
+  background:var(--amber); border:none; border-radius:14px; color:#000;
+  cursor:pointer; font-family:'Bebas Neue',sans-serif; font-size:1.8rem;
+  letter-spacing:3px; padding:14px 56px; transition:opacity .15s;
+}
+.join-btn:active { opacity:.75; }
+
+/* ── Main app ─────────────────────────────────────────────── */
+#app { display:none; flex-direction:column; height:100%; }
+
+/* Header */
+#hdr {
+  background:var(--surface); border-bottom:1px solid var(--border);
+  padding:10px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+}
+.dot {
+  width:9px; height:9px; border-radius:50%; background:var(--dim); flex-shrink:0;
+  transition:background .3s, box-shadow .3s;
+}
+.dot.on  { background:var(--green); box-shadow:0 0 8px var(--green); }
+.dot.off { background:var(--red); }
+#sl-name { font-family:'Bebas Neue',sans-serif; font-size:1.35rem; letter-spacing:2px;
+           color:var(--amber); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#pos-badge { font-family:'DM Mono',monospace; font-size:.82rem; color:var(--dim); flex-shrink:0; }
+
+/* Song title bar */
+#song-bar {
+  background:var(--amber-glow); border-bottom:2px solid var(--amber);
+  padding:12px 16px; flex-shrink:0;
+}
+#song-title {
+  font-family:'Bebas Neue',sans-serif; font-size:clamp(2rem,7vw,4rem);
+  letter-spacing:3px; line-height:1.05; color:var(--text);
+}
+#song-meta {
+  font-family:'DM Mono',monospace; font-size:.8rem; color:var(--dim);
+  margin-top:5px; display:flex; flex-wrap:wrap; gap:14px;
+}
+#song-meta b { color:var(--amber); font-weight:400; }
+
+/* Next-song ribbon */
+#next-bar {
+  background:var(--bg); border-bottom:1px solid var(--border);
+  padding:7px 16px; font-size:.78rem; color:var(--dim);
+  display:flex; align-items:center; gap:8px; flex-shrink:0;
+}
+.next-lbl { text-transform:uppercase; letter-spacing:1px; font-size:.68rem; color:var(--dim); }
+#next-title { color:var(--text); }
+
+/* Content area */
+#content-wrap { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; position:relative; }
+#content-wrap::-webkit-scrollbar { display:none; }
+#song-content {
+  font-family:'DM Mono',monospace;
+  font-size:clamp(1.05rem,3.8vw,1.45rem);
+  line-height:2; white-space:pre-wrap; color:var(--text);
+  padding:20px 18px 100px;
+}
+.chord { color:var(--amber); font-weight:500; font-size:.82em;
+         position:relative; top:-.3em; margin: 0 1px; }
+
+/* Waiting state */
+#waiting {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100%; gap:18px; color:var(--dim); text-align:center; padding:40px;
+  position:relative; overflow:hidden;
+}
+#waiting h2 { font-family:'Bebas Neue',sans-serif; font-size:2.2rem; letter-spacing:3px; }
+#waiting p  { max-width:280px; line-height:1.6; }
+.wait-corner {
+  position:absolute; width:clamp(80px,18vw,140px); height:auto; opacity:.15; pointer-events:none;
+}
+.wait-tl { top:0; right:0; }
+.wait-br { bottom:0; left:0; }
+
+/* Bottom controls */
+#controls {
+  background:var(--surface); border-top:1px solid var(--border);
+  padding:9px 12px; display:flex; align-items:center; gap:9px; flex-shrink:0;
+}
+.ctrl {
+  background:var(--border); border:none; border-radius:10px; color:var(--text);
+  cursor:pointer; font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:600;
+  padding:10px 14px; transition:background .15s; flex-shrink:0; line-height:1;
+}
+.ctrl.active { background:var(--amber); color:#000; }
+.ctrl:active { opacity:.7; }
+#xp-display {
+  font-family:'DM Mono',monospace; font-size:.9rem; color:var(--amber);
+  min-width:34px; text-align:center;
+}
+.gap { flex:1; }
+
+/* ── Metronome flash overlay ──────────────────────────────── */
+#metro-flash {
+  position: fixed; inset: 0; pointer-events: none; z-index: 100;
+  opacity: 0;
+  background: radial-gradient(ellipse at center,
+    transparent 35%,
+    rgba(245,158,11,0.25) 65%,
+    rgba(255,255,255,0.55) 100%);
+  transition: opacity 60ms ease-out;
+}
+#metro-flash.beat { opacity: 1; }
+
+/* BPM readout in button */
+#btn-metro { min-width: 72px; }
+#btn-metro .bpm-sub {
+  display: block; font-size: .62rem; font-weight: 400;
+  opacity: .7; margin-top: 1px; letter-spacing: 0;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+/* Allow user to pinch-zoom content for readability */
+#content-wrap { touch-action: pan-y pinch-zoom; }
+
+/* Font size user-control */
+#font-size-btn {
+  background:var(--border); border:none; border-radius:10px; color:var(--text);
+  cursor:pointer; font-family:'DM Sans',sans-serif; font-size:.82rem; font-weight:600;
+  padding:10px 12px; transition:background .15s; flex-shrink:0; line-height:1;
+  user-select:none;
+}
+#font-size-btn:active { opacity:.7; }
+
+/* ── Phone portrait (≤ 480px) ─────────────────────────── */
+@media (max-width: 480px) {
+  #hdr { padding:8px 12px; gap:8px; }
+  #sl-name { font-size:1.1rem; }
+
+  #song-bar { padding:8px 12px; }
+  #song-title { font-size:clamp(1.6rem,8vw,2.8rem); letter-spacing:2px; }
+  #song-meta { font-size:.72rem; gap:10px; }
+
+  #next-bar { padding:5px 12px; font-size:.72rem; }
+
+  #song-content {
+    font-size:clamp(1rem,4.5vw,1.3rem);
+    line-height:1.85;
+    padding:16px 14px 90px;
+  }
+
+  #controls { padding:7px 8px; gap:6px; flex-wrap:wrap; }
+  .ctrl { padding:9px 11px; font-size:.78rem; }
+  #metro-timeout-sel { font-size:.7rem; padding:5px 6px; }
+}
+
+/* ── Phone landscape / small tablet (481–768px) ───────── */
+@media (min-width: 481px) and (max-width: 768px) {
+  #song-content {
+    font-size:clamp(1.05rem,3vw,1.35rem);
+    padding:18px 20px 90px;
+  }
+}
+
+/* ── Tablet / iPad (769–1024px) ───────────────────────── */
+@media (min-width: 769px) {
+  #song-content {
+    font-size:clamp(1.1rem,2vw,1.6rem);
+    line-height:2.1;
+    padding:24px 32px 100px;
+    max-width:900px;
+    margin:0 auto;
+  }
+  #controls { padding:10px 24px; gap:12px; }
+  .ctrl { padding:12px 18px; font-size:.88rem; }
+}
+
+/* ── Large screen (> 1200px) ──────────────────────────── */
+@media (min-width: 1200px) {
+  #song-content {
+    font-size:clamp(1.2rem,1.5vw,1.8rem);
+    max-width:1000px;
+    padding:32px 48px 100px;
+  }
+}
+
+/* ── Landscape phone: shrink chrome to maximise content ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  #hdr { padding:5px 12px; }
+  #song-bar { padding:5px 12px; }
+  #song-title { font-size:clamp(1.2rem,5vw,2rem); }
+  #song-meta { display:none; }
+  #next-bar { padding:3px 12px; }
+  #controls { padding:5px 10px; gap:6px; }
+  .ctrl { padding:7px 12px; font-size:.76rem; }
+}
+/* ── Signal overlay ──────────────────────────────────────── */
+#signal-overlay {
+  position:fixed; top:0; left:0; right:0; z-index:800;
+  display:flex; align-items:center; justify-content:center;
+  padding:clamp(12px,3vh,24px);
+  pointer-events:none;
+  opacity:0; transform:translateY(-20px);
+  transition:opacity .25s ease, transform .25s ease;
+}
+#signal-overlay.show { opacity:1; transform:translateY(0); }
+#signal-banner {
+  background:var(--amber); color:#000;
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(1.6rem,6vw,3rem); letter-spacing:4px;
+  padding:clamp(10px,2vh,18px) clamp(24px,5vw,48px);
+  border-radius:12px; box-shadow:0 8px 40px rgba(0,0,0,.7);
+  white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Name screen ─────────────────────────────────────────── -->
+<div id="name-screen">
+  <img src="/static/img/logo_large.png" alt="Setlist CMDR"
+       style="width:clamp(180px,50vw,320px);height:auto;margin-bottom:8px;">
+  <p>Enter your name to join the stage</p>
+  <input id="name-input" type="text" placeholder="Your name…" autocomplete="off" autocorrect="off" autocapitalize="words">
+  <button class="join-btn" onclick="joinStage()">JOIN</button>
+</div>
+
+<!-- ── Signal overlay ──────────────────────────────────────── -->
+<div id="signal-overlay">
+  <div id="signal-banner"></div>
+</div>
+
+<!-- ── Metronome flash overlay ────────────────────────────── -->
+<div id="metro-flash"></div>
+
+<!-- ── Main app ───────────────────────────────────────────── -->
+<div id="app">
+
+  <div id="hdr">
+    <div class="dot" id="dot"></div>
+    <div id="sl-name">Waiting for band leader…</div>
+    <div id="pos-badge"></div>
+  </div>
+
+  <div id="song-bar" style="display:none">
+    <div id="song-title">—</div>
+    <div id="song-meta"></div>
+  </div>
+
+  <div id="next-bar" style="display:none">
+    <span class="next-lbl">Next →</span>
+    <span id="next-title"></span>
+  </div>
+
+  <div id="content-wrap">
+    <div id="waiting">
+      <img class="wait-corner wait-tl" src="/static/img/logo_top_right.png"    alt="">
+      <img class="wait-corner wait-br" src="/static/img/logo_bottom_left.png"  alt="">
+      <img src="/static/img/logo_large.png" alt="Setlist CMDR"
+           style="width:clamp(160px,45vw,300px);height:auto;opacity:.55;">
+      <h2>STANDBY</h2>
+      <p>Waiting for the band leader to go live…</p>
+    </div>
+    <div id="song-content" style="display:none"></div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl active" id="btn-mode"   onclick="toggleMode()">LYRICS</button>
+    <button class="ctrl"        id="btn-scroll" onclick="toggleScroll()">» AUTO</button>
+    <button class="ctrl"        id="btn-metro"  onclick="toggleMetro()">
+      ◉ FLASH<span class="bpm-sub" id="metro-bpm-sub"></span>
+    </button>
+    <select id="metro-timeout-sel" title="Auto-stop after…"
+      style="background:var(--border);border:none;border-radius:10px;color:var(--dim);
+             font-family:'DM Sans',sans-serif;font-size:.75rem;padding:6px 8px;
+             cursor:pointer;flex-shrink:0;">
+      <option value="10">10s</option>
+      <option value="15">15s</option>
+      <option value="20" selected>20s</option>
+      <option value="30">30s</option>
+    </select>
+    <div class="gap"></div>
+    <button class="ctrl" onclick="xpDown()">♭</button>
+    <div id="xp-display">+0</div>
+    <button class="ctrl" onclick="xpUp()">♯</button>
+  </div>
+</div>
+
+<script>
+// ── Chord transposition ───────────────────────────────────────
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENHARM = {Db:'C#',Eb:'D#',Gb:'F#',Ab:'G#',Bb:'A#'};
+
+function xpChord(chord, n) {
+  const m = chord.match(/^([A-G][b#]?)(.*)/s);
+  if (!m) return chord;
+  let [,root,qual] = m;
+  root = ENHARM[root] || root;
+  const i = NOTES.indexOf(root);
+  if (i < 0) return chord;
+  return NOTES[(i + n + 120) % 12] + qual;
+}
+
+function xpText(text, n) {
+  if (!n) return text;
+  return text.replace(/\[([^\]]+)\]/g, (_,c) => `[${xpChord(c,n)}]`);
+}
+
+// ── State ─────────────────────────────────────────────────────
+let name = localStorage.getItem('bsl_name') || '';
+let mode = localStorage.getItem('bsl_mode') || 'lyrics';
+let xp   = 0;
+let song = null;
+let slSongs = [];
+let slId  = null;
+let ws    = null;
+let scrollTick = null;
+let scrolling  = false;
+
+// ── Boot ──────────────────────────────────────────────────────
+if (name) {
+  document.getElementById('name-input').value = name;
+  boot();
+}
+document.getElementById('name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') joinStage();
+});
+
+function joinStage() {
+  const v = document.getElementById('name-input').value.trim();
+  if (!v) return;
+  name = v;
+  localStorage.setItem('bsl_name', v);
+  boot();
+}
+
+function boot() {
+  document.getElementById('name-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  applyMode();
+  connect();
+  fallbackPoll();
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen  = () => {
+    setDot('on');
+    if (name) ws.send(`name:${name}`);
+  };
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'live_update')  applyLive(msg);
+    if (msg.type === 'signal')         showSignal(msg.text);
+  };
+  ws.onclose = () => { setDot('off'); setTimeout(connect, 3000); };
+  ws.onerror = () => ws.close();
+}
+
+setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
+
+function setDot(s) {
+  const d = document.getElementById('dot');
+  d.className = 'dot ' + (s === 'on' ? 'on' : 'off');
+}
+
+// ── Fallback polling ──────────────────────────────────────────
+async function fallbackPoll() {
+  try {
+    const r  = await fetch('/api/live');
+    const st = await r.json();
+    applyLive(st);
+  } catch {}
+  setTimeout(fallbackPoll, 12000);
+}
+
+// ── Live state handler ────────────────────────────────────────
+async function applyLive(state) {
+  if (!state.is_live || !state.setlist_id) {
+    document.getElementById('sl-name').textContent = 'Waiting for band leader…';
+    document.getElementById('song-bar').style.display = 'none';
+    document.getElementById('next-bar').style.display = 'none';
+    document.getElementById('waiting').style.display = 'flex';
+    document.getElementById('song-content').style.display = 'none';
+    return;
+  }
+
+  // Refresh setlist song list when setlist changes
+  if (state.setlist_id !== slId) {
+    slId = state.setlist_id;
+    const r = await fetch(`/api/setlists/${slId}/songs`);
+    slSongs = await r.json();
+  }
+
+  document.getElementById('sl-name').textContent = state.setlist_name || 'Live Set';
+
+  const idx   = state.song_index || 0;
+  const entry = slSongs[idx];
+  const next  = slSongs[idx + 1];
+
+  document.getElementById('pos-badge').textContent =
+    `${idx + 1} / ${slSongs.length}`;
+
+  if (entry) {
+    // Fetch full song details if changed
+    if (!song || song.id !== entry.id) {
+      const sr = await fetch(`/api/songs/${entry.id}`);
+      song = await sr.json();
+      xp = 0;
+      document.getElementById('xp-display').textContent = '+0';
+      stopScroll();
+      restartMetroIfOn();
+    }
+    renderSong();
+    document.getElementById('song-bar').style.display = 'block';
+    document.getElementById('waiting').style.display = 'none';
+    document.getElementById('song-content').style.display = 'block';
+  }
+
+  if (next) {
+    document.getElementById('next-bar').style.display = 'flex';
+    document.getElementById('next-title').textContent = next.title;
+  } else {
+    document.getElementById('next-bar').style.display = 'none';
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────
+function renderSong() {
+  if (!song) return;
+
+  document.getElementById('song-title').textContent = song.title;
+
+  const meta = [];
+  if (song.artist)   meta.push(`<b>${song.artist}</b>`);
+  if (song.song_key) meta.push(`Key: <b>${song.song_key}</b>`);
+  if (song.tempo)    meta.push(`♩ <b>${song.tempo} BPM</b>`);
+  document.getElementById('song-meta').innerHTML = meta.join(' · ');
+
+  const raw  = mode === 'lyrics'
+    ? (song.lyrics || '')
+    : (song.chords || song.lyrics || '');
+  const text = xpText(raw, xp);
+  const html = mode === 'lyrics'
+    ? text.replace(/\[[^\]]+\]/g, '').replace(/\n/g,'<br>')
+    : text.replace(/\[([^\]]+)\]/g, '<span class="chord">$1</span>').replace(/\n/g,'<br>');
+
+  const el = document.getElementById('song-content');
+  el.innerHTML = html ||
+    '<span style="color:var(--dim);font-style:italic">No content added for this song.</span>';
+}
+
+// ── Mode ──────────────────────────────────────────────────────
+function toggleMode() {
+  mode = mode === 'lyrics' ? 'chords' : 'lyrics';
+  localStorage.setItem('bsl_mode', mode);
+  applyMode();
+  renderSong();
+}
+function applyMode() {
+  const btn = document.getElementById('btn-mode');
+  btn.textContent = mode === 'lyrics' ? 'LYRICS' : 'CHORDS';
+  btn.classList.toggle('active', mode === 'lyrics');
+}
+
+// ── Transpose ─────────────────────────────────────────────────
+function xpUp()   { if (xp < 11)  xp++; updXp(); }
+function xpDown() { if (xp > -11) xp--; updXp(); }
+function updXp() {
+  document.getElementById('xp-display').textContent = (xp >= 0 ? '+' : '') + xp;
+  renderSong();
+}
+
+// ── Autoscroll ────────────────────────────────────────────────
+function toggleScroll() { scrolling ? stopScroll() : startScroll(); }
+function startScroll() {
+  scrolling = true;
+  document.getElementById('btn-scroll').classList.add('active');
+  const wrap = document.getElementById('content-wrap');
+  scrollTick = setInterval(() => {
+    wrap.scrollTop += 0.6;
+    if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight) stopScroll();
+  }, 16);
+}
+function stopScroll() {
+  scrolling = false;
+  document.getElementById('btn-scroll').classList.remove('active');
+  clearInterval(scrollTick);
+}
+
+// ── Metronome (local only, auto-timeout) ──────────────────────
+let metroOn    = false;
+let metroTimer = null;
+let metroBeat  = 0;
+let metroTimeout = null;
+
+function toggleMetro() {
+  metroOn ? stopMetro() : startMetro();
+}
+
+function startMetro() {
+  const bpm = song?.tempo;
+  const btn = document.getElementById('btn-metro');
+  if (!bpm || bpm < 20 || bpm > 300) {
+    btn.style.borderColor = 'var(--red)';
+    setTimeout(() => btn.style.borderColor = '', 800);
+    document.getElementById('metro-bpm-sub').textContent = 'no BPM';
+    return;
+  }
+  metroOn   = true;
+  metroBeat = 0;
+  btn.classList.add('active');
+  document.getElementById('metro-bpm-sub').textContent = `${bpm} bpm`;
+  tick(bpm);
+
+  // Auto-stop after selected timeout
+  const secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
+  clearTimeout(metroTimeout);
+  metroTimeout = setTimeout(stopMetro, secs * 1000);
+}
+
+function tick(bpm) {
+  if (!metroOn) return;
+  fireFlash();
+  metroBeat = (metroBeat + 1) % 4;
+  metroTimer = setTimeout(() => tick(bpm), 60000 / bpm);
+}
+
+function stopMetro() {
+  metroOn = false;
+  clearTimeout(metroTimer);
+  clearTimeout(metroTimeout);
+  document.getElementById('metro-flash').classList.remove('beat');
+  document.getElementById('btn-metro').classList.remove('active');
+  document.getElementById('metro-bpm-sub').textContent = '';
+}
+
+function fireFlash() {
+  const flash  = document.getElementById('metro-flash');
+  const isDown = metroBeat === 0;
+  const bpm    = song?.tempo || 120;
+  const beatMs = 60000 / bpm;
+  flash.style.background = isDown
+    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
+    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
+  flash.classList.add('beat');
+  setTimeout(() => flash.classList.remove('beat'),
+    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
+}
+
+function restartMetroIfOn() {
+  if (!metroOn) return;
+  stopMetro();
+  startMetro();
+}
+
+// ── Signal overlay ────────────────────────────────────────────
+let signalTimer = null;
+function showSignal(text) {
+  const overlay = document.getElementById('signal-overlay');
+  const banner  = document.getElementById('signal-banner');
+  banner.textContent = text;
+  overlay.classList.add('show');
+  if (signalTimer) clearTimeout(signalTimer);
+  signalTimer = setTimeout(() => overlay.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>

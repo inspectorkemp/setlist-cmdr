@@ -1,0 +1,11 @@
+# Core framework
+fastapi==0.111.0
+
+# ASGI server
+uvicorn==0.29.0
+
+# WebSocket support (required for live sync)
+websockets==12.0
+
+# Form/file upload parsing — needed for CSV import
+python-multipart==0.0.9

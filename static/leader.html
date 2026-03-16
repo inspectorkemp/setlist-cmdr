@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=1.0, maximum-scale=3.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Setlist CMDR — Leader</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+<meta name="theme-color" content="#08080f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/leader.css?v=3">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
+</head>
+<body data-mode="ipad">
+<div id="metro-flash"></div>
+<div id="shell">
+
+  <!-- Nav -->
+  <div id="nav">
+    <div class="nav-brand" style="padding:0 12px;">
+      <img src="/static/img/logo_bottom_right_wide.png" alt="Setlist CMDR"
+           style="height:38px;width:auto;display:block;">
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="showTab('songs')">Songs</button>
+      <button class="tab-btn"        onclick="showTab('setlist')">Setlists</button>
+      <button class="tab-btn"        onclick="showTab('live')">Live Control</button>
+    </div>
+    <div class="nav-right">
+      <div id="mode-toggle">
+        <button class="mode-opt" id="mode-ipad"    onclick="setMode('ipad')">⬜ IPAD</button>
+        <button class="mode-opt" id="mode-desktop" onclick="setMode('desktop')">DESK ⬜</button>
+      </div>
+      <a href="/api/db/download" download
+         title="Download database backup"
+         style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                color:var(--dim);font-family:'DM Sans',sans-serif;font-size:.78rem;
+                font-weight:600;padding:5px 12px;text-decoration:none;white-space:nowrap;
+                transition:.15s;display:flex;align-items:center;gap:5px;"
+         onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'"
+         onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">
+        ▼ DB
+      </a>
+      <button onclick="document.getElementById('db-upload-input').click()"
+         title="Upload a database backup to restore"
+         style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                color:var(--dim);font-family:'DM Sans',sans-serif;font-size:.78rem;
+                font-weight:600;padding:5px 12px;white-space:nowrap;cursor:pointer;
+                transition:.15s;display:flex;align-items:center;gap:5px;"
+         onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'"
+         onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">
+        ▲ DB
+      </button>
+      <input type="file" id="db-upload-input" accept=".db" style="display:none"
+             onchange="uploadDatabase(this)">
+      <div id="musician-count" onclick="toggleRoster()" title="Click to see who's connected"
+           style="cursor:pointer;">◈ 0 CREW</div>
+    </div>
+  </div>
+
+  <!-- ── Musician roster popup ─────────────────────────────── -->
+  <div id="roster-popup" style="
+    display:none; position:fixed; top:52px; right:12px; z-index:400;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    min-width:220px; max-width:300px; box-shadow:0 8px 32px rgba(0,0,0,.5);
+    overflow:hidden;">
+    <div style="padding:12px 16px; border-bottom:1px solid var(--border);
+         display:flex; align-items:center; justify-content:space-between;">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:1rem;
+            letter-spacing:2px;color:var(--amber);">CONNECTED</span>
+      <button onclick="toggleRoster()" style="background:none;border:none;
+              color:var(--dim);cursor:pointer;font-size:1rem;padding:0 4px;">✕</button>
+    </div>
+    <div id="roster-list" style="padding:8px 0; max-height:320px; overflow-y:auto;"></div>
+  </div>
+
+  <!-- ── SONGS PANEL ──────────────────────────────────────── -->
+  <div class="panel active" id="songs-panel">
+    <div class="toolbar">
+      <input class="search-input" id="song-search" placeholder="Search songs…" oninput="renderSongs()">
+      <select class="filter-select" id="song-filter" onchange="renderSongs()">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="needs_work">Needs work</option>
+        <option value="maybe">Maybe</option>
+        <option value="retired">Retired</option>
+      </select>
+      <div class="spacer"></div>
+      <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(event)">
+      <button class="btn" onclick="document.getElementById('csv-file-input').click()">▲ CSV</button>
+      <button class="btn primary" onclick="openSongModal(null)">+ New Song</button>
+    </div>
+    <div class="list-area" id="song-list"></div>
+  </div>
+
+  <!-- ── SETLIST PANEL ─────────────────────────────────────── -->
+  <div class="panel" id="setlist-panel">
+    <div class="body">
+      <!-- Left: setlist list -->
+      <div id="sl-list-col">
+        <div class="toolbar">
+          <span style="font-size:.8rem;color:var(--dim);font-weight:600;">SETLISTS</span>
+          <div class="spacer"></div>
+          <button class="btn primary" onclick="newSetlist()">+</button>
+        </div>
+        <div class="list-area" id="sl-list" style="padding:0;"></div>
+      </div>
+      <!-- Right: setlist editor -->
+      <div id="sl-editor-col">
+        <div class="toolbar" id="sl-editor-toolbar" style="display:none">
+          <span id="sl-editor-name"
+            style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:2px;color:var(--amber);cursor:pointer;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+            title="Click to rename"
+            onclick="renameCurrentSetlist()"></span>
+          <button class="btn" style="padding:5px 10px;font-size:.78rem;flex-shrink:0;" onclick="renameCurrentSetlist()" title="Rename">✎</button>
+          <button class="btn" style="padding:5px 10px;font-size:.78rem;flex-shrink:0;" onclick="cloneCurrentSetlist()" title="Clone setlist">⊞ CLONE</button>
+          <button class="btn danger" id="sl-delete-btn" style="padding:5px 10px;font-size:.78rem;flex-shrink:0;" onclick="deleteCurrentSetlist()">Delete</button>
+          <span id="sl-editor-dur" style="font-size:.78rem;color:var(--dim);margin-left:4px;flex-shrink:0;"></span>
+          <div class="spacer"></div>
+          <input class="search-input" id="lib-search" placeholder="Search library…" oninput="renderLibrary()" style="width:160px;">
+        </div>
+        <div id="sl-status-bar" style="display:none; align-items:center; gap:12px;
+          padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border);
+          font-size:.82rem; flex-shrink:0;">
+          <span style="color:var(--dim); font-weight:600; letter-spacing:.5px; text-transform:uppercase; font-size:.72rem;">Visibility:</span>
+          <button id="sl-toggle-active-btn" onclick="toggleSetlistActive()"
+            style="border:none; border-radius:20px; padding:5px 16px; font-size:.82rem;
+                   font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+                   transition:.15s; letter-spacing:.5px;">
+          </button>
+          <span id="sl-toggle-hint" style="color:var(--dim); font-size:.75rem;"></span>
+        </div>
+        <div class="list-area" id="sl-songs" style="padding:12px 16px;"></div>
+        <div id="lib-strip" style="display:none;">
+          <div class="lib-title">▲ ADD FROM LIBRARY</div>
+          <div id="lib-results"></div>
+        </div>
+        <!-- Empty state -->
+        <div id="sl-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+          flex:1;color:var(--dim);gap:12px;padding:40px;text-align:center;">
+          <img src="/static/img/logo_large.png" alt="Setlist CMDR"
+               style="width:clamp(140px,40%,260px);height:auto;opacity:.18;margin-bottom:8px;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:2px;">SELECT A SETLIST</div>
+          <div style="font-size:.85rem;">Choose a setlist from the left to edit it, or create a new one.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LIVE PANEL ────────────────────────────────────────── -->
+  <div class="panel" id="live-panel">
+
+    <!-- ── NOT LIVE: setup card ─────────────────────────────── -->
+    <div class="live-card" id="live-setup-card">
+      <h3>GO LIVE</h3>
+      <div id="live-status-badge">
+        <div id="live-dot"></div>
+        <span id="live-status-text">Not live</span>
+      </div>
+      <label>Choose a setlist</label>
+      <select id="live-sl-select" style="margin-bottom:16px;">
+        <option value="">— pick a setlist —</option>
+      </select>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn go"  id="go-live-btn"  onclick="goLive()">▶ DEPLOY</button>
+        <button class="btn end" id="end-live-btn" onclick="endShow()" style="display:none;">◼ STAND DOWN</button>
+      </div>
+    </div>
+
+    <!-- ── LIVE: full stage layout ──────────────────────────── -->
+    <div id="live-stage-wrap" style="display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
+
+      <!-- Top control bar -->
+      <div id="leader-ctrl-bar">
+        <div class="dot on"></div>
+        <span id="l-sl-name">—</span>
+        <span id="l-pos-badge"></span>
+        <div class="gap"></div>
+        <button class="ctrl-bar-btn" id="l-prev-btn" onclick="navSong(-1)">◄ PREV</button>
+        <button class="ctrl-bar-btn" id="l-next-btn" onclick="navSong(+1)">NEXT ►</button>
+        <button class="ctrl-bar-btn" id="l-metro-btn" onclick="toggleMetro()">
+          ◉ FLASH<span class="bpm-sub" id="leader-metro-sub"></span>
+        </button>
+        <select id="l-metro-timeout-sel" title="Auto-stop after…"
+          style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                 color:var(--dim);font-family:'DM Sans',sans-serif;font-size:.75rem;
+                 padding:5px 8px;outline:none;cursor:pointer;flex-shrink:0;">
+          <option value="10">10s</option>
+          <option value="15">15s</option>
+          <option value="20" selected>20s</option>
+          <option value="30">30s</option>
+        </select>
+        <button class="ctrl-bar-btn danger" onclick="endShow()">◼ END</button>
+      </div>
+
+      <!-- Signal bar (hotkeys) -->
+      <div id="signal-bar" style="display:none;">
+        <div id="signal-btns"></div>
+        <button id="signal-edit-btn" class="sig-edit-toggle" onclick="toggleSignalEdit()" title="Edit labels">✎</button>
+      </div>
+      <div id="signal-edit-panel" style="display:none;"></div>
+
+      <!-- Song title bar -->
+      <div id="l-song-bar">
+        <div id="l-song-title">—</div>
+        <div id="l-song-meta"></div>
+      </div>
+
+      <!-- Next-song ribbon -->
+      <div id="l-next-bar" style="display:none;">
+        <span style="text-transform:uppercase;letter-spacing:1px;font-size:.68rem;color:var(--dim);">NEXT ►</span>
+        <span id="l-next-title" style="color:var(--text);margin-left:6px;"></span>
+      </div>
+
+      <!-- Scrollable content -->
+      <div id="l-content-wrap">
+        <div id="l-song-content"></div>
+      </div>
+
+      <!-- Bottom controls (identical to musician) -->
+      <div id="l-controls">
+        <button class="l-ctrl active" id="l-btn-mode"   onclick="lToggleMode()">LYRICS</button>
+        <button class="l-ctrl"        id="l-btn-scroll" onclick="lToggleScroll()">» AUTO</button>
+        <div style="flex:1;"></div>
+        <button class="l-ctrl" onclick="lXpDown()">♭</button>
+        <div id="l-xp-display">+0</div>
+        <button class="l-ctrl" onclick="lXpUp()">♯</button>
+      </div>
+
+    </div>
+
+  </div>
+
+</div><!-- /shell -->
+
+<!-- ── CSV Import Modal ─────────────────────────────────────────── -->
+<div id="csv-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;
+     display:none;align-items:center;justify-content:center;padding:20px;" onclick="closeCsvModal(event)">
+  <div id="csv-modal" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;
+       width:100%;max-width:820px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:2px;color:var(--amber);flex:1;">
+        IMPORT CSV
+      </div>
+      <button class="btn" onclick="closeCsvModal()">✕ CLOSE</button>
+    </div>
+
+    <!-- Column mapper -->
+    <div id="csv-mapper" style="padding:18px 24px;border-bottom:1px solid var(--border);
+         display:none;flex-wrap:wrap;gap:14px;">
+      <div style="width:100%;font-size:.78rem;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px;">
+        Map your CSV columns to song fields
+      </div>
+      <!-- dropdowns injected by JS -->
+      <div id="csv-mapper-fields" style="display:flex;flex-wrap:wrap;gap:14px;width:100%;"></div>
+      <div style="width:100%;font-size:.75rem;color:var(--dim);margin-top:4px;">
+        Columns marked <span style="color:var(--amber);">—skip—</span> will be ignored.
+        Only <b style="color:var(--text);">Title</b> is required.
+      </div>
+    </div>
+
+    <!-- Preview table -->
+    <div id="csv-preview-wrap" style="flex:1;overflow-y:auto;padding:0 24px 8px;">
+      <div id="csv-drop-hint" style="display:flex;flex-direction:column;align-items:center;
+           justify-content:center;height:200px;color:var(--dim);gap:12px;text-align:center;">
+        
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:2px;">
+          CHOOSE A CSV FILE
+        </div>
+        <div style="font-size:.85rem;max-width:320px;line-height:1.6;">
+          Click <b style="color:var(--text);">▲ CSV</b> in the toolbar to pick a file.<br>
+          Expected columns (any order, any header name):<br>
+          title, artist, key, tempo, duration
+        </div>
+        <a href="#" onclick="downloadCsvTemplate(event)"
+           style="color:var(--amber);font-size:.82rem;margin-top:4px;">
+          ▼ Template CSV
+        </a>
+      </div>
+      <div id="csv-preview-table-wrap" style="display:none;padding:12px 0;">
+        <div id="csv-stats" style="font-size:.82rem;color:var(--dim);margin-bottom:10px;"></div>
+        <div style="overflow-x:auto;">
+          <table id="csv-preview-table" style="width:100%;border-collapse:collapse;font-size:.82rem;">
+            <thead id="csv-thead"></thead>
+            <tbody id="csv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div id="csv-footer" style="padding:16px 24px;border-top:1px solid var(--border);
+         display:flex;align-items:center;gap:12px;">
+      <div id="csv-import-status" style="font-size:.85rem;color:var(--dim);flex:1;font-family:'DM Mono',monospace;"></div>
+      <button class="btn" onclick="closeCsvModal()">Cancel</button>
+      <button class="btn primary" id="csv-import-btn" onclick="runCsvImport()" style="display:none;">
+        Import Songs
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Song modal ──────────────────────────────────────────────── -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <div id="modal-header">
+      <div id="modal-title">NEW SONG</div>
+      <button class="btn" onclick="closeSongModal()">✕ CLOSE</button>
+    </div>
+    <div id="modal-body">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Title *</label>
+          <input id="f-title" type="text" placeholder="Song title" required>
+        </div>
+        <div class="form-group" style="flex:1.5">
+          <label>Artist / Band</label>
+          <input id="f-artist" type="text" placeholder="Original artist">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Key</label>
+          <select id="f-key">
+            <option value="">—</option>
+            <option>C</option><option>C#</option><option>D</option><option>D#</option>
+            <option>E</option><option>F</option><option>F#</option><option>G</option>
+            <option>G#</option><option>A</option><option>A#</option><option>B</option>
+            <option>Cm</option><option>C#m</option><option>Dm</option><option>D#m</option>
+            <option>Em</option><option>Fm</option><option>F#m</option><option>Gm</option>
+            <option>G#m</option><option>Am</option><option>A#m</option><option>Bm</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tempo (BPM)</label>
+          <input id="f-tempo" type="number" min="40" max="250" placeholder="120">
+        </div>
+        <div class="form-group">
+          <label>Duration (mm:ss)</label>
+          <input id="f-duration" type="text" placeholder="3:45">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="f-status">
+            <option value="active">Active</option>
+            <option value="needs_work">Needs work</option>
+            <option value="maybe">Maybe</option>
+            <option value="retired">Retired</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Lyrics <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(plain text)</span></label>
+        <textarea id="f-lyrics" placeholder="Paste or type lyrics here…" style="min-height:160px;"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Chords <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(ChordPro — use [C], [Am7], etc. inline)</span></label>
+        <textarea id="f-chords" placeholder="[G]Here comes the [Em]sun [C]doo doo doo [D]doo&#10;[G]Here comes the [Em]sun [C]and I say [D]it's alright" style="min-height:160px;"></textarea>
+        <div class="hint">Each musician can choose to see lyrics, chords, or both. Tabs or chords not in ChordPro? Paste them in the Chords field as-is.</div>
+      </div>
+      <div class="form-group">
+        <label>Notes / Cues</label>
+        <textarea id="f-notes" placeholder="Key changes, counts, capo position, production notes…" style="min-height:80px;"></textarea>
+      </div>
+    </div>
+    <div id="modal-footer">
+      <button class="btn primary" onclick="saveSong()">Save Song</button>
+      <div class="spacer"></div>
+      <button class="btn danger" id="delete-song-btn" onclick="deleteSong()" style="display:none;">Delete Song</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Chord transposition (shared with musician view) ───────────
+const NOTES   = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const ENHARM  = {Db:'C#',Eb:'D#',Gb:'F#',Ab:'G#',Bb:'A#'};
+
+function xpChord(chord, n) {
+  const m = chord.match(/^([A-G][b#]?)(.*)/s);
+  if (!m) return chord;
+  let [, root, qual] = m;
+  root = ENHARM[root] || root;
+  const i = NOTES.indexOf(root);
+  if (i < 0) return chord;
+  return NOTES[(i + n + 120) % 12] + qual;
+}
+
+function xpText(text, n) {
+  if (!n) return text;
+  return text.replace(/\[([^\]]+)\]/g, (_, c) => `[${xpChord(c, n)}]`);
+}
+// ── State ─────────────────────────────────────────────────────
+let songs     = [];
+let setlists  = [];
+let currentSl = null;   // current setlist object
+let slSongs   = [];     // songs in current setlist
+let editingSongId = null;
+
+let liveState = { setlist_id: null, setlist_name: null, song_index: 0, is_live: false };
+let liveSlSongs = [];
+
+// ── Tabs ──────────────────────────────────────────────────────
+function showTab(tab) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(tab + '-panel').classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (tab === 'live') refreshLivePanel();
+  if (tab === 'songs') loadSongs();
+  if (tab === 'setlist') { loadSongs(); loadSetlists(); }
+}
+
+// ── API helpers ───────────────────────────────────────────────
+const api = {
+  get:    (url)        => fetch(url).then(r => r.json()),
+  post:   (url, body)  => fetch(url, { method:'POST',   headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).then(r => r.json()),
+  put:    (url, body)  => fetch(url, { method:'PUT',    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).then(r => r.json()),
+  delete: (url)        => fetch(url, { method:'DELETE' }).then(r => r.json()),
+};
+
+// ── Duration helpers ──────────────────────────────────────────
+function parseDur(str) {
+  if (!str) return null;
+  const p = str.split(':');
+  return p.length === 2 ? parseInt(p[0]) * 60 + parseInt(p[1]) : parseInt(str) || null;
+}
+function fmtDur(sec) {
+  if (!sec) return '';
+  return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+}
+function totalDur(arr) {
+  const t = arr.reduce((s,x) => s + (x.duration || 0), 0);
+  return t ? fmtDur(t) : '';
+}
+
+// ── Songs ─────────────────────────────────────────────────────
+async function loadSongs() {
+  songs = await api.get('/api/songs');
+  renderSongs();
+  // NOTE: renderLibrary() is intentionally NOT called here.
+  // It is only called from selectSetlist(), where both songs and slSongs are guaranteed ready.
+}
+
+function renderSongs() {
+  const q  = (document.getElementById('song-search').value || '').toLowerCase();
+  const st = document.getElementById('song-filter').value;
+  const el = document.getElementById('song-list');
+  const filtered = songs.filter(s =>
+    (!q  || s.title.toLowerCase().includes(q) || (s.artist || '').toLowerCase().includes(q)) &&
+    (!st || s.status === st)
+  );
+  el.innerHTML = filtered.length ? filtered.map(songCard).join('') :
+    '<div style="color:var(--dim);text-align:center;padding:40px;font-size:.9rem;">No songs found.</div>';
+}
+
+function songCard(s) {
+  const meta = [
+    s.artist   ? `<span>${s.artist}</span>` : '',
+    s.song_key ? `Key: <span>${s.song_key}</span>` : '',
+    s.tempo    ? `<span>${s.tempo} BPM</span>` : '',
+    s.duration ? `<span>${fmtDur(s.duration)}</span>` : '',
+  ].filter(Boolean).join(' · ');
+  return `<div class="song-card" onclick="openSongModal(${s.id})">
+    <div class="song-info">
+      <div class="s-title">${esc(s.title)}</div>
+      <div class="s-sub">${meta}</div>
+    </div>
+    <span class="status-badge s-${s.status}">${s.status.replace('_',' ')}</span>
+  </div>`;
+}
+
+// ── Song modal ────────────────────────────────────────────────
+function openSongModal(id) {
+  editingSongId = id;
+  const s = id ? songs.find(x => x.id === id) : null;
+  document.getElementById('modal-title').textContent = id ? 'EDIT SONG' : 'NEW SONG';
+  document.getElementById('f-title').value    = s?.title    || '';
+  document.getElementById('f-artist').value   = s?.artist   || '';
+  document.getElementById('f-key').value      = s?.song_key || '';
+  document.getElementById('f-tempo').value    = s?.tempo    || '';
+  document.getElementById('f-duration').value = s?.duration ? fmtDur(s.duration) : '';
+  document.getElementById('f-status').value   = s?.status   || 'active';
+  document.getElementById('f-lyrics').value   = s?.lyrics   || '';
+  document.getElementById('f-chords').value   = s?.chords   || '';
+  document.getElementById('f-notes').value    = s?.notes    || '';
+  document.getElementById('delete-song-btn').style.display = id ? '' : 'none';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeSongModal()   { document.getElementById('modal-overlay').classList.remove('open'); }
+function closeModal(e)      { if (e.target.id === 'modal-overlay') closeSongModal(); }
+
+async function saveSong() {
+  const title = document.getElementById('f-title').value.trim();
+  if (!title) { alert('Title is required.'); return; }
+  const body = {
+    title, status: document.getElementById('f-status').value,
+    artist:   document.getElementById('f-artist').value.trim()   || null,
+    song_key: document.getElementById('f-key').value             || null,
+    tempo:    parseInt(document.getElementById('f-tempo').value)  || null,
+    duration: parseDur(document.getElementById('f-duration').value),
+    lyrics:   document.getElementById('f-lyrics').value.trim()   || null,
+    chords:   document.getElementById('f-chords').value.trim()   || null,
+    notes:    document.getElementById('f-notes').value.trim()    || null,
+  };
+  if (editingSongId) {
+    await api.put(`/api/songs/${editingSongId}`, body);
+  } else {
+    await api.post('/api/songs', body);
+  }
+  closeSongModal();
+  await loadSongs();
+}
+
+async function deleteSong() {
+  if (!editingSongId) return;
+  if (!confirm('Delete this song from the library? It will also be removed from any setlists.')) return;
+  await api.delete(`/api/songs/${editingSongId}`);
+  closeSongModal();
+  await loadSongs();
+  if (currentSl) await loadSlSongs(currentSl.id);
+}
+
+// ── Setlists ──────────────────────────────────────────────────
+async function loadSetlists() {
+  setlists = await api.get('/api/setlists');
+  renderSetlistList();
+}
+
+function renderSetlistList() {
+  const el = document.getElementById('sl-list');
+  if (!setlists.length) {
+    el.innerHTML = '<div style="color:var(--dim);padding:20px 16px;font-size:.85rem;">No setlists yet.</div>';
+    return;
+  }
+  el.innerHTML = setlists.map(sl => {
+    const isActive = currentSl?.id === sl.id;
+    const isInactive = sl.active === 0;
+    return `<div class="sl-item ${isActive ? 'active' : ''} ${isInactive ? 'inactive' : ''}"
+          draggable="true"
+          data-id="${sl.id}"
+          onclick="selectSetlist(${sl.id})"
+          ondblclick="renameSetlist(${sl.id}, event)">
+      <span class="sl-drag-handle" onclick="event.stopPropagation()" title="Drag to reorder">⣿</span>
+      <div class="sl-item-body">
+        <div class="sl-name">${esc(sl.name)}</div>
+        <div class="sl-meta">${sl.description ? esc(sl.description) : '&nbsp;'}</div>
+      </div>
+      <button class="sl-active-toggle ${isInactive ? 'off' : 'on'}"
+        onclick="event.stopPropagation(); toggleSetlistActiveById(${sl.id})"
+        title="${isInactive ? 'Click to activate' : 'Click to deactivate'}"
+      >${isInactive ? 'OFF' : 'ON'}</button>
+    </div>`;
+  }).join('');
+  initSlDrag();
+}
+
+async function renameCurrentSetlist() {
+  if (!currentSl) return;
+  await renameSetlist(currentSl.id);
+}
+
+async function renameSetlist(id, e) {
+  if (e) e.stopPropagation();
+  const sl = setlists.find(s => s.id === id);
+  if (!sl) return;
+  const newName = prompt('Rename setlist:', sl.name);
+  if (!newName?.trim() || newName.trim() === sl.name) return;
+  await api.put(`/api/setlists/${id}`, { name: newName.trim(), description: sl.description || '' });
+  await loadSetlists();
+  if (currentSl?.id === id) {
+    currentSl = setlists.find(s => s.id === id);
+    document.getElementById('sl-editor-name').textContent = currentSl.name;
+  }
+}
+
+async function selectSetlist(id) {
+  currentSl = setlists.find(s => s.id === id);
+  renderSetlistList();
+  document.getElementById('sl-editor-toolbar').style.display = 'flex';
+  document.getElementById('sl-status-bar').style.display = 'flex';
+  document.getElementById('lib-strip').style.display = 'block';
+  document.getElementById('sl-empty').style.display = 'none';
+  document.getElementById('sl-editor-name').textContent = currentSl.name;
+  updateActiveBtn();
+  // Await both sequentially — renderLibrary needs them both complete
+  await loadSlSongs(id);
+  await loadSongs();
+  renderLibrary();
+}
+
+function updateActiveBtn() {
+  const btn = document.getElementById('sl-toggle-active-btn');
+  const hint = document.getElementById('sl-toggle-hint');
+  if (!btn || !currentSl) return;
+  const active = currentSl.active !== 0;
+  if (active) {
+    btn.textContent = '▶ ACTIVE';
+    btn.style.background = '#4caf50';
+    btn.style.color = '#fff';
+    if (hint) hint.textContent = 'Shown in Live Control — click to hide';
+  } else {
+    btn.textContent = '◼ INACTIVE';
+    btn.style.background = 'var(--border)';
+    btn.style.color = 'var(--dim)';
+    if (hint) hint.textContent = 'Hidden from Live Control — click to show';
+  }
+}
+
+async function loadSlSongs(id) {
+  slSongs = await api.get(`/api/setlists/${id}/songs`);
+  renderSlSongs();
+}
+
+function renderSlSongs() {
+  const el = document.getElementById('sl-songs');
+  if (!slSongs.length) {
+    el.innerHTML = '<div style="color:var(--dim);padding:20px;font-size:.85rem;text-align:center;">No songs yet — add from the library below.</div>';
+    document.getElementById('sl-editor-dur').textContent = '';
+    return;
+  }
+  const dur = totalDur(slSongs);
+  document.getElementById('sl-editor-dur').textContent = dur ? `T: ${dur}` : '';
+
+  let html = '';
+  let lastSection = null;
+  slSongs.forEach((s, i) => {
+    if (s.section_label && s.section_label !== lastSection) {
+      html += `<div class="sec-divider">— ${esc(s.section_label)} —</div>`;
+      lastSection = s.section_label;
+    }
+    const meta = [s.artist, s.song_key ? `Key: ${s.song_key}` : '', s.duration ? fmtDur(s.duration) : '']
+      .filter(Boolean).join(' · ');
+    html += `<div class="ss-row">
+      <span style="font-family:'DM Mono',monospace;font-size:.75rem;color:var(--dim);min-width:20px;">${i+1}.</span>
+      <div class="ss-info">
+        <div class="ss-title">${esc(s.title)}</div>
+        ${meta ? `<div class="ss-meta">${meta}</div>` : ''}
+        ${s.section_label ? `<div class="ss-sec">§ ${esc(s.section_label)}</div>` : ''}
+      </div>
+      <button class="ss-btn" onclick="moveSlSong(${i},-1)" ${i===0?'disabled':''} title="Move up">↑</button>
+      <button class="ss-btn" onclick="moveSlSong(${i},+1)" ${i===slSongs.length-1?'disabled':''} title="Move down">↓</button>
+      <button class="ss-btn" onclick="setSection(${i})" title="Set section label">§</button>
+      <button class="ss-btn danger" onclick="removeSlSong(${s.ss_id})" title="Remove">✕</button>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+async function moveSlSong(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= slSongs.length) return;
+  [slSongs[idx], slSongs[newIdx]] = [slSongs[newIdx], slSongs[idx]];
+  await api.put(`/api/setlists/${currentSl.id}/reorder`, { order: slSongs.map(s => s.ss_id) });
+  await loadSlSongs(currentSl.id);
+}
+
+async function removeSlSong(ssId) {
+  await api.delete(`/api/setlists/${currentSl.id}/songs/${ssId}`);
+  await loadSlSongs(currentSl.id);
+}
+
+async function setSection(idx) {
+  const s = slSongs[idx];
+  const label = prompt('Section label (e.g. "Set 1", "Encore") — leave blank to clear:', s.section_label || '');
+  if (label === null) return;
+  await api.put(`/api/setlists/${currentSl.id}/songs/${s.ss_id}/section`, { label: label.trim() || null });
+  await loadSlSongs(currentSl.id);
+}
+
+function renderLibrary() {
+  if (!currentSl) return;
+  const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
+  const used = new Set(slSongs.map(s => s.id));
+  const avail = songs.filter(s =>
+    !used.has(s.id) &&
+    (!q || s.title.toLowerCase().includes(q) || (s.artist || '').toLowerCase().includes(q))
+  );
+  document.getElementById('lib-results').innerHTML = avail.map(s =>
+    `<div class="lib-chip" onclick="addToSetlist(${s.id})">${esc(s.title)}</div>`
+  ).join('') || `<div style="color:var(--dim);font-size:.8rem;">No songs to add.</div>`;
+}
+
+async function addToSetlist(songId) {
+  await api.post(`/api/setlists/${currentSl.id}/songs`, { song_id: songId, position: slSongs.length });
+  await loadSlSongs(currentSl.id);
+  renderLibrary();
+}
+
+async function newSetlist() {
+  const name = prompt('Setlist name:');
+  if (!name?.trim()) return;
+  const sl = await api.post('/api/setlists', { name: name.trim() });
+  await loadSetlists();
+  selectSetlist(sl.id);
+}
+
+async function deleteCurrentSetlist() {
+  if (!currentSl) return;
+  if (!confirm(`Delete "${currentSl.name}"? This cannot be undone.`)) return;
+  await api.delete(`/api/setlists/${currentSl.id}`);
+  currentSl = null;
+  slSongs   = [];
+  document.getElementById('sl-editor-toolbar').style.display = 'none';
+  document.getElementById('sl-status-bar').style.display = 'none';
+  document.getElementById('lib-strip').style.display = 'none';
+  document.getElementById('sl-empty').style.display = '';
+  document.getElementById('sl-songs').innerHTML = '';
+  await loadSetlists();
+}
+
+async function cloneCurrentSetlist() {
+  if (!currentSl) return;
+  const clone = await api.post(`/api/setlists/${currentSl.id}/clone`, {});
+  await loadSetlists();
+  selectSetlist(clone.id);
+}
+
+async function toggleSetlistActive() {
+  if (!currentSl) return;
+  await toggleSetlistActiveById(currentSl.id);
+}
+
+async function toggleSetlistActiveById(id) {
+  const sl = setlists.find(s => s.id === id);
+  if (!sl) return;
+  const newActive = sl.active === 0 ? 1 : 0;
+  await api.put(`/api/setlists/${id}`, {
+    name: sl.name,
+    description: sl.description || '',
+    active: newActive
+  });
+  await loadSetlists();
+  if (currentSl?.id === id) {
+    currentSl = setlists.find(s => s.id === id);
+    updateActiveBtn();
+  }
+}
+
+// ── Drag-to-reorder setlist items ─────────────────────────────
+function initSlDrag() {
+  const list = document.getElementById('sl-list');
+  let dragSrc = null;
+
+  list.querySelectorAll('.sl-item').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrc = item;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      list.querySelectorAll('.sl-item').forEach(i => i.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      list.querySelectorAll('.sl-item').forEach(i => i.classList.remove('drag-over'));
+      if (item !== dragSrc) item.classList.add('drag-over');
+    });
+    item.addEventListener('drop', async e => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      if (!dragSrc || dragSrc === item) return;
+      // Reorder in DOM
+      const items = [...list.querySelectorAll('.sl-item')];
+      const fromIdx = items.indexOf(dragSrc);
+      const toIdx   = items.indexOf(item);
+      if (fromIdx < toIdx) item.after(dragSrc);
+      else item.before(dragSrc);
+      // Persist new order
+      const newOrder = [...list.querySelectorAll('.sl-item')].map(i => +i.dataset.id);
+      await api.put('/api/setlists/reorder', { order: newOrder });
+      await loadSetlists();
+    });
+  });
+}
+
+// ── Mode toggle (iPad / Desktop) ─────────────────────────────
+function setMode(mode) {
+  document.body.setAttribute('data-mode', mode);
+  localStorage.setItem('cmdr_mode', mode);
+  document.getElementById('mode-ipad').classList.toggle('active',    mode === 'ipad');
+  document.getElementById('mode-desktop').classList.toggle('active', mode === 'desktop');
+}
+
+(function initMode() {
+  const saved = localStorage.getItem('cmdr_mode') || 'ipad';
+  setMode(saved);
+})();
+
+// ── Signal messages ──────────────────────────────────────────
+const DEFAULT_SIGNALS = [
+  { key:'F1', label:'RUSHING' },
+  { key:'F2', label:'DRAGGING' },
+  { key:'F3', label:'CHORUS' },
+  { key:'F4', label:'BRIDGE' },
+  { key:'F5', label:'KEEP GOING' },
+  { key:'F6', label:'WRAP IT UP' },
+  { key:'F7', label:'HOLD HERE' },
+  { key:'F8', label:'EYES ON ME' },
+];
+
+let signals = JSON.parse(localStorage.getItem('cmdr_signals') || 'null') || DEFAULT_SIGNALS;
+let signalEditMode = false;
+
+function renderSignalBar() {
+  const bar = document.getElementById('signal-btns');
+  if (!bar || signalEditMode) return;
+  bar.innerHTML = signals.map((s, i) =>
+    `<button class="sig-btn" onclick="sendSignal(${i})" title="Press ${esc(s.key)}">
+      <span class="sig-key">${esc(s.key)}</span>
+      <span class="sig-label">${esc(s.label)}</span>
+    </button>`
+  ).join('');
+}
+
+function renderSignalEdit() {
+  const panel = document.getElementById('signal-edit-panel');
+  panel.innerHTML =
+    '<div class="sig-edit-row">' +
+    signals.map((s, i) =>
+      `<div class="sig-edit-item">
+        <span class="sig-key">${esc(s.key)}</span>
+        <input class="sig-edit-input" value="${esc(s.label)}" maxlength="24"
+               oninput="signals[${i}].label=this.value.toUpperCase()"
+               onchange="saveSignals()">
+      </div>`
+    ).join('') +
+    '</div>';
+}
+
+function toggleSignalEdit() {
+  signalEditMode = !signalEditMode;
+  document.getElementById('signal-edit-panel').style.display = signalEditMode ? 'block' : 'none';
+  document.getElementById('signal-btns').style.display       = signalEditMode ? 'none'  : 'flex';
+  document.getElementById('signal-edit-btn').textContent     = signalEditMode ? '✓' : '✎';
+  if (signalEditMode) renderSignalEdit();
+  else { saveSignals(); renderSignalBar(); }
+}
+
+function saveSignals() {
+  localStorage.setItem('cmdr_signals', JSON.stringify(signals));
+}
+
+async function sendSignal(idx) {
+  const s = signals[idx];
+  if (!s || !liveState.is_live) return;
+  const btns = document.querySelectorAll('.sig-btn');
+  if (btns[idx]) {
+    btns[idx].classList.add('sig-fired');
+    setTimeout(() => btns[idx].classList.remove('sig-fired'), 700);
+  }
+  await api.post('/api/signal', { text: s.label });
+}
+
+document.addEventListener('keydown', e => {
+  if (!liveState.is_live) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const idx = ['F1','F2','F3','F4','F5','F6','F7','F8'].indexOf(e.key);
+  if (idx === -1) return;
+  e.preventDefault();
+  sendSignal(idx);
+});
+
+// ── Live control ──────────────────────────────────────────────
+async function refreshLivePanel() {
+  await loadSetlists();
+  const sel = document.getElementById('live-sl-select');
+  sel.innerHTML = '<option value="">— pick a setlist —</option>' +
+    setlists.filter(sl => sl.active !== 0)
+            .map(sl => `<option value="${sl.id}">${esc(sl.name)}</option>`).join('');
+
+  const state = await api.get('/api/live');
+  Object.assign(liveState, state);
+  if (state.setlist_id) sel.value = state.setlist_id;
+
+  applyLiveUI();
+  updateMusicianCount(state.musicians || 0, state.roster || []);
+}
+
+function applyLiveUI() {
+  const live = liveState.is_live;
+
+  // Setup card vs stage layout
+  document.getElementById('live-setup-card').style.display   = live ? 'none' : '';
+  document.getElementById('live-stage-wrap').style.display   = live ? 'flex' : 'none';
+  document.getElementById('signal-bar').style.display         = live ? 'flex' : 'none';
+  if (live) renderSignalBar();
+  document.getElementById('go-live-btn').style.display       = live ? 'none' : '';
+  document.getElementById('end-live-btn').style.display      = live ? '' : 'none';
+  document.getElementById('live-sl-select').disabled         = live;
+  document.getElementById('live-status-text').textContent    = live ? 'LIVE' : 'Not live';
+
+  const dot = document.getElementById('live-dot');
+  dot.style.cssText = live
+    ? 'width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);'
+    : 'width:10px;height:10px;border-radius:50%;background:var(--dim);';
+
+  // Toggle panel class for full-height layout
+  document.getElementById('live-panel').classList.toggle('is-live', live);
+
+  if (live) renderStageCard();
+}
+
+async function goLive() {
+  const slId = parseInt(document.getElementById('live-sl-select').value);
+  if (!slId) { alert('Please select a setlist first.'); return; }
+  const sl = setlists.find(s => s.id === slId);
+  liveState = { setlist_id: slId, setlist_name: sl.name, song_index: 0, is_live: true };
+  liveSlSongs = await api.get(`/api/setlists/${slId}/songs`);
+  await api.put('/api/live', liveState);
+  applyLiveUI();
+}
+
+async function endShow() {
+  if (!confirm('End the show? All musician screens will go to standby.')) return;
+  stopMetro();
+  lStopScroll();
+  liveState = { setlist_id: null, setlist_name: null, song_index: 0, is_live: false };
+  liveSlSongs = [];
+  lSong = null;
+  await api.put('/api/live', liveState);
+  applyLiveUI();
+}
+
+async function navSong(dir) {
+  const newIdx = liveState.song_index + dir;
+  if (newIdx < 0 || newIdx >= liveSlSongs.length) return;
+  liveState.song_index = newIdx;
+  await api.put('/api/live', liveState);
+  await renderStageCard();
+  restartMetroIfOn();
+}
+
+async function jumpToSong(idx) {
+  liveState.song_index = idx;
+  await api.put('/api/live', liveState);
+  await renderStageCard();
+  restartMetroIfOn();
+}
+
+async function renderStageCard() {
+  const idx = liveState.song_index;
+  const cur = liveSlSongs[idx];
+  const nxt = liveSlSongs[idx + 1];
+
+  document.getElementById('l-sl-name').textContent   = liveState.setlist_name || '';
+  document.getElementById('l-pos-badge').textContent = cur ? `${idx + 1} / ${liveSlSongs.length}` : '';
+
+  document.getElementById('l-prev-btn').disabled = idx === 0;
+  document.getElementById('l-next-btn').disabled = idx >= liveSlSongs.length - 1;
+
+  if (nxt) {
+    document.getElementById('l-next-bar').style.display = 'flex';
+    document.getElementById('l-next-title').textContent = nxt.title;
+  } else {
+    document.getElementById('l-next-bar').style.display = 'none';
+  }
+
+  if (cur && (!lSong || lSong.id !== cur.id)) {
+    const r = await fetch(`/api/songs/${cur.id}`);
+    lSong = await r.json();
+    lXp = 0;
+    document.getElementById('l-xp-display').textContent = '+0';
+    lStopScroll();
+  }
+  lRenderSong();
+}
+
+// ── Leader song rendering ─────────────────────────────────────
+let lSong    = null;
+let lMode    = localStorage.getItem('l_mode') || 'lyrics';
+let lXp      = 0;
+let lScrolling  = false;
+let lScrollTick = null;
+
+function lRenderSong() {
+  if (!lSong) {
+    document.getElementById('l-song-content').innerHTML =
+      '<span style="color:var(--dim);font-style:italic;font-family:\'DM Mono\',monospace;padding:20px 20px;display:block;">No song selected.</span>';
+    document.getElementById('l-song-title').textContent = '—';
+    document.getElementById('l-song-meta').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('l-song-title').textContent = lSong.title;
+
+  const meta = [];
+  if (lSong.artist)   meta.push(`<b>${lSong.artist}</b>`);
+  if (lSong.song_key) meta.push(`Key: <b>${lSong.song_key}</b>`);
+  if (lSong.tempo)    meta.push(`♩ <b>${lSong.tempo} BPM</b>`);
+  document.getElementById('l-song-meta').innerHTML = meta.join(' · ');
+
+  const raw  = lMode === 'lyrics'
+    ? (lSong.lyrics || '')
+    : (lSong.chords || lSong.lyrics || '');
+  const text = xpText(raw, lXp);
+  const html = lMode === 'lyrics'
+    ? text.replace(/\[[^\]]+\]/g, '').replace(/\n/g, '<br>')
+    : text.replace(/\[([^\]]+)\]/g, '<span class="chord">$1</span>').replace(/\n/g, '<br>');
+
+  document.getElementById('l-song-content').innerHTML = html ||
+    '<span style="color:var(--dim);font-style:italic">No content added for this song.</span>';
+}
+
+function lToggleMode() {
+  lMode = lMode === 'lyrics' ? 'chords' : 'lyrics';
+  localStorage.setItem('l_mode', lMode);
+  const btn = document.getElementById('l-btn-mode');
+  btn.textContent = lMode === 'lyrics' ? 'LYRICS' : 'CHORDS';
+  btn.classList.toggle('active', lMode === 'lyrics');
+  lRenderSong();
+}
+
+function lXpUp()   { if (lXp < 11)  lXp++; lUpdXp(); }
+function lXpDown() { if (lXp > -11) lXp--; lUpdXp(); }
+function lUpdXp() {
+  document.getElementById('l-xp-display').textContent = (lXp >= 0 ? '+' : '') + lXp;
+  lRenderSong();
+}
+
+function lToggleScroll() { lScrolling ? lStopScroll() : lStartScroll(); }
+function lStartScroll() {
+  lScrolling = true;
+  document.getElementById('l-btn-scroll').classList.add('active');
+  const wrap = document.getElementById('l-content-wrap');
+  lScrollTick = setInterval(() => {
+    wrap.scrollTop += 0.6;
+    if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight) lStopScroll();
+  }, 16);
+}
+function lStopScroll() {
+  lScrolling = false;
+  const btn = document.getElementById('l-btn-scroll');
+  if (btn) btn.classList.remove('active');
+  clearInterval(lScrollTick);
+}
+
+// ── Database backup / restore ────────────────────────────────
+async function uploadDatabase(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';  // reset so same file can be re-selected
+
+  if (!confirm(
+    'Replace the entire database with "' + file.name + '"?\n\n' +
+    'The current database will be backed up automatically on the server.\n' +
+    'The page will reload after upload. This cannot be undone.'
+  )) return;
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const resp = await fetch('/api/db/upload', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!resp.ok) {
+      alert('Upload failed: ' + (data.detail || resp.statusText));
+      return;
+    }
+    alert('Database replaced successfully. The page will now reload.');
+    location.reload();
+  } catch (err) {
+    alert('Upload error: ' + err.message);
+  }
+}
+
+// ── Musician roster ───────────────────────────────────────────
+let rosterOpen    = false;
+let rosterNames   = [];
+
+function updateMusicianCount(n, names) {
+  document.getElementById('musician-count').textContent =
+    `◈ ${n} CREW`;
+  if (names) {
+    rosterNames = names;
+    if (rosterOpen) renderRoster();
+  }
+}
+
+function toggleRoster() {
+  rosterOpen = !rosterOpen;
+  const popup = document.getElementById('roster-popup');
+  popup.style.display = rosterOpen ? 'block' : 'none';
+  if (rosterOpen) renderRoster();
+}
+
+// Close if clicking outside
+document.addEventListener('click', e => {
+  if (!rosterOpen) return;
+  const popup = document.getElementById('roster-popup');
+  const badge = document.getElementById('musician-count');
+  if (!popup.contains(e.target) && !badge.contains(e.target)) {
+    rosterOpen = false;
+    popup.style.display = 'none';
+  }
+});
+
+function renderRoster() {
+  const list = document.getElementById('roster-list');
+  if (!rosterNames.length) {
+    list.innerHTML = `<div style="padding:12px 16px;color:var(--dim);font-size:.85rem;
+      text-align:center;">No musicians connected</div>`;
+    return;
+  }
+  list.innerHTML = rosterNames.map((n, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;
+         border-bottom:1px solid var(--border);font-size:.88rem;">
+      <span style="font-family:'DM Mono',monospace;font-size:.7rem;
+            color:var(--dim);min-width:20px;">${i + 1}</span>
+      <span style="color:var(--text);flex:1;">${esc(n)}</span>
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--green);
+            box-shadow:0 0 5px var(--green);flex-shrink:0;"></span>
+    </div>`).join('');
+}
+
+// WebSocket for real-time roster updates from server
+(function connectLeaderWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onmessage = e => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'roster_update') {
+        updateMusicianCount(msg.count, msg.musicians);
+      }
+    } catch {}
+  };
+  ws.onclose = () => setTimeout(connectLeaderWS, 3000);
+  ws.onerror = () => ws.close();
+  // Announce as leader so it doesn't show up in roster
+  ws.onopen = () => ws.send('name:');
+})();
+
+// Fallback poll (catches up if WS missed a change)
+setInterval(async () => {
+  try {
+    const s = await api.get('/api/musicians');
+    updateMusicianCount(s.count || 0, s.musicians);
+  } catch {}
+}, 10000);
+
+// ── Metronome (server-anchored, phase-aligned) ────────────────
+// ── Metronome (local only, auto-timeout) ──────────────────────
+let metroOn      = false;
+let metroTimer   = null;
+let metroBeat    = 0;
+let metroTimeout = null;
+
+function toggleMetro() {
+  metroOn ? stopMetro() : startMetro();
+}
+
+function startMetro() {
+  const cur = liveSlSongs[liveState.song_index];
+  const bpm = cur?.tempo;
+  const btn = document.getElementById('l-metro-btn');
+  if (!bpm || bpm < 20 || bpm > 300) {
+    if (btn) { btn.style.borderColor = 'var(--red)'; setTimeout(() => btn.style.borderColor = '', 800); }
+    document.getElementById('leader-metro-sub').textContent = 'no BPM';
+    return;
+  }
+  metroOn   = true;
+  metroBeat = 0;
+  if (btn) btn.classList.add('active');
+  document.getElementById('leader-metro-sub').textContent = `${bpm} bpm`;
+  tick(bpm);
+
+  const secs = parseInt(document.getElementById('l-metro-timeout-sel').value) || 20;
+  clearTimeout(metroTimeout);
+  metroTimeout = setTimeout(stopMetro, secs * 1000);
+}
+
+function tick(bpm) {
+  if (!metroOn) return;
+  fireFlash(bpm);
+  metroBeat  = (metroBeat + 1) % 4;
+  metroTimer = setTimeout(() => tick(bpm), 60000 / bpm);
+}
+
+function stopMetro() {
+  metroOn = false;
+  clearTimeout(metroTimer);
+  clearTimeout(metroTimeout);
+  document.getElementById('metro-flash').classList.remove('beat');
+  const btn = document.getElementById('l-metro-btn');
+  if (btn) btn.classList.remove('active');
+  const sub = document.getElementById('leader-metro-sub');
+  if (sub) sub.textContent = '';
+}
+
+function fireFlash(bpm) {
+  const flash  = document.getElementById('metro-flash');
+  const isDown = metroBeat === 0;
+  const beatMs = 60000 / (bpm || 120);
+  flash.style.background = isDown
+    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
+    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
+  flash.classList.add('beat');
+  setTimeout(() => flash.classList.remove('beat'),
+    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
+}
+
+function restartMetroIfOn() {
+  if (!metroOn) return;
+  stopMetro();
+  startMetro();
+}
+
+// ── Util ──────────────────────────────────────────────────────
+function esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────
+loadSongs();
+(function() {
+  const btn = document.getElementById('l-btn-mode');
+  if (btn) {
+    btn.textContent = lMode === 'lyrics' ? 'LYRICS' : 'CHORDS';
+    btn.classList.toggle('active', lMode === 'lyrics');
+  }
+})();
+
+// ── CSV Import ────────────────────────────────────────────────
+
+// Fields we can import and their display labels
+const CSV_FIELDS = [
+  { key: 'title',    label: 'Title',    required: true  },
+  { key: 'artist',   label: 'Artist',   required: false },
+  { key: 'song_key', label: 'Key',      required: false },
+  { key: 'tempo',    label: 'Tempo',    required: false },
+  { key: 'duration', label: 'Duration', required: false },
+  { key: 'status',   label: 'Status',   required: false },
+];
+
+let csvRows     = [];   // parsed rows (array of objects keyed by original header)
+let csvHeaders  = [];   // original column headers from the file
+let csvMapping  = {};   // { originalHeader: fieldKey | '' }
+
+function closeCsvModal(e) {
+  if (e && e.target.id !== 'csv-overlay') return;
+  document.getElementById('csv-overlay').style.display = 'none';
+  // Reset file input so same file can be re-selected
+  document.getElementById('csv-file-input').value = '';
+}
+
+function handleCsvFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('csv-overlay').style.display = 'flex';
+  document.getElementById('csv-drop-hint').style.display = 'none';
+  document.getElementById('csv-preview-table-wrap').style.display = 'none';
+  document.getElementById('csv-mapper').style.display = 'none';
+  document.getElementById('csv-import-btn').style.display = 'none';
+  document.getElementById('csv-import-status').textContent = 'Parsing…';
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const { headers, rows } = parseCSV(ev.target.result);
+      csvHeaders = headers;
+      csvRows    = rows;
+      csvMapping = autoMap(headers);
+      renderMapper();
+      renderPreview();
+      document.getElementById('csv-import-status').textContent = '';
+      document.getElementById('csv-import-btn').style.display = '';
+    } catch (err) {
+      document.getElementById('csv-import-status').textContent = '✗ ' + err.message;
+      document.getElementById('csv-drop-hint').style.display = 'flex';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ── CSV parser (handles quoted fields, commas inside quotes) ──
+function parseCSV(text) {
+  // Normalise line endings
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+    .filter(l => l.trim() !== '');
+  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.');
+
+  const parseRow = line => {
+    const fields = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        fields.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    fields.push(cur.trim());
+    return fields;
+  };
+
+  const headers = parseRow(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
+  if (headers.length === 0) throw new Error('No columns found in header row.');
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseRow(lines[i]);
+    const row  = {};
+    headers.forEach((h, j) => { row[h] = (vals[j] || '').replace(/^"|"$/g, '').trim(); });
+    // Skip completely empty rows
+    if (Object.values(row).some(v => v !== '')) rows.push(row);
+  }
+  if (rows.length === 0) throw new Error('No data rows found after the header.');
+  return { headers, rows };
+}
+
+// ── Auto-map column headers to known fields ───────────────────
+const AUTO_MAP_HINTS = {
+  title:    ['title', 'song', 'name', 'song name', 'song title'],
+  artist:   ['artist', 'band', 'performer', 'by'],
+  song_key: ['key', 'song key', 'musical key', 'tonality'],
+  tempo:    ['tempo', 'bpm', 'beats per minute', 'speed'],
+  duration: ['duration', 'length', 'time', 'runtime', 'song length'],
+  status:   ['status', 'state', 'stage'],
+};
+
+function autoMap(headers) {
+  const mapping = {};
+  const used    = new Set();
+  headers.forEach(h => {
+    const norm = h.toLowerCase().trim();
+    let matched = '';
+    for (const [key, hints] of Object.entries(AUTO_MAP_HINTS)) {
+      if (!used.has(key) && hints.includes(norm)) { matched = key; used.add(key); break; }
+    }
+    mapping[h] = matched;
+  });
+  return mapping;
+}
+
+// ── Render column mapper dropdowns ───────────────────────────
+function renderMapper() {
+  document.getElementById('csv-mapper').style.display = 'flex';
+  const container = document.getElementById('csv-mapper-fields');
+  container.innerHTML = csvHeaders.map(h => `
+    <div style="display:flex;flex-direction:column;gap:5px;min-width:130px;">
+      <div style="font-size:.72rem;color:var(--amber);font-family:'DM Mono',monospace;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;" title="${esc(h)}">
+        ${esc(h)}
+      </div>
+      <select onchange="csvMapping['${esc(h)}']=this.value; renderPreview()"
+        style="background:var(--card);border:1px solid var(--border);border-radius:6px;
+               color:var(--text);font-family:'DM Sans',sans-serif;font-size:.8rem;
+               padding:5px 8px;outline:none;cursor:pointer;">
+        <option value="">— skip —</option>
+        ${CSV_FIELDS.map(f =>
+          `<option value="${f.key}" ${csvMapping[h] === f.key ? 'selected' : ''}>
+            ${f.label}${f.required ? ' *' : ''}
+          </option>`
+        ).join('')}
+      </select>
+    </div>
+  `).join('');
+}
+
+// ── Render preview table ──────────────────────────────────────
+function renderPreview() {
+  const mapped    = CSV_FIELDS.filter(f => Object.values(csvMapping).includes(f.key));
+  const hasTitle  = Object.values(csvMapping).includes('title');
+  const skipCount = csvRows.filter(r => !r[headerFor('title')] || !r[headerFor('title')].trim()).length;
+  const importCount = csvRows.length - skipCount;
+
+  document.getElementById('csv-stats').innerHTML =
+    `<b style="color:var(--text);">${csvRows.length}</b> rows found — ` +
+    `<b style="color:var(--green);">${importCount}</b> will import` +
+    (skipCount ? `, <b style="color:var(--amber);">${skipCount}</b> skipped (no title)` : '') +
+    (hasTitle ? '' : ' — <b style="color:var(--red);">map a Title column to continue</b>');
+
+  document.getElementById('csv-import-btn').disabled = !hasTitle;
+  document.getElementById('csv-import-btn').style.opacity = hasTitle ? '1' : '0.4';
+
+  // Table header
+  document.getElementById('csv-thead').innerHTML =
+    `<tr>${mapped.map(f =>
+      `<th style="text-align:left;padding:6px 10px;font-size:.75rem;color:var(--dim);
+           border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.6px;
+           font-weight:600;">${f.label}</th>`
+    ).join('')}<th style="padding:6px 10px;border-bottom:1px solid var(--border);"></th></tr>`;
+
+  // Table rows (preview first 50)
+  const preview = csvRows.slice(0, 50);
+  const titleHeader = headerFor('title');
+  document.getElementById('csv-tbody').innerHTML = preview.map(row => {
+    const hasRowTitle = titleHeader && row[titleHeader]?.trim();
+    return `<tr style="opacity:${hasRowTitle ? '1' : '0.35'}">
+      ${mapped.map(f => {
+        const h   = headerFor(f.key);
+        const val = h ? row[h] : '';
+        return `<td style="padding:6px 10px;border-bottom:1px solid var(--border);
+                    font-size:.82rem;color:var(--text);">${esc(val)}</td>`;
+      }).join('')}
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:.72rem;
+          color:${hasRowTitle ? 'var(--green)' : 'var(--amber)'};">
+        ${hasRowTitle ? '✓' : 'skip'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  if (csvRows.length > 50) {
+    document.getElementById('csv-tbody').innerHTML +=
+      `<tr><td colspan="${mapped.length + 1}" style="padding:10px;color:var(--dim);
+       font-size:.78rem;text-align:center;">… and ${csvRows.length - 50} more rows</td></tr>`;
+  }
+
+  document.getElementById('csv-preview-table-wrap').style.display = 'block';
+}
+
+function headerFor(fieldKey) {
+  return Object.keys(csvMapping).find(h => csvMapping[h] === fieldKey) || null;
+}
+
+// ── Run the import ────────────────────────────────────────────
+async function runCsvImport() {
+  const titleHeader = headerFor('title');
+  if (!titleHeader) { alert('Please map a column to Title first.'); return; }
+
+  const btn    = document.getElementById('csv-import-btn');
+  const status = document.getElementById('csv-import-status');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+
+  const toImport = csvRows.filter(r => r[titleHeader]?.trim());
+  let imported = 0, failed = 0;
+
+  for (const row of toImport) {
+    status.textContent = `Importing ${imported + 1} / ${toImport.length}…`;
+    try {
+      const body = {
+        title:    row[titleHeader].trim(),
+        artist:   valFor(row, 'artist')   || null,
+        song_key: valFor(row, 'song_key') || null,
+        tempo:    parseTempo(valFor(row, 'tempo')),
+        duration: parseDur(valFor(row, 'duration')),
+        status:   parseStatus(valFor(row, 'status')),
+        lyrics:   null,
+        chords:   null,
+        notes:    null,
+      };
+      await api.post('/api/songs', body);
+      imported++;
+    } catch {
+      failed++;
+    }
+  }
+
+  await loadSongs();
+  status.innerHTML =
+    `<span style="color:var(--green);">✓ ${imported} imported</span>` +
+    (failed ? ` <span style="color:var(--red);">· ${failed} failed</span>` : '');
+  btn.textContent  = 'Done';
+  btn.disabled     = false;
+}
+
+function valFor(row, fieldKey) {
+  const h = headerFor(fieldKey);
+  return h ? (row[h] || '').trim() : '';
+}
+
+function parseTempo(val) {
+  if (!val) return null;
+  const n = parseInt(val.replace(/[^\d]/g, ''));
+  return (n >= 20 && n <= 300) ? n : null;
+}
+
+function parseStatus(val) {
+  const v = (val || '').toLowerCase().trim();
+  const map = {
+    active: 'active', 'needs work': 'needs_work', needs_work: 'needs_work',
+    maybe: 'maybe', retired: 'retired', inactive: 'retired',
+  };
+  return map[v] || 'active';
+}
+
+// ── Template download ─────────────────────────────────────────
+function downloadCsvTemplate(e) {
+  e.preventDefault();
+  const csv  = 'title,artist,key,tempo,duration,status\n' +
+               'Bohemian Rhapsody,Queen,Bb,72,5:55,active\n' +
+               'Hotel California,Eagles,Bm,147,6:30,active\n';
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'),
+                 { href: url, download: 'songs-template.csv' });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
