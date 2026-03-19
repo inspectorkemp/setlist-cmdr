@@ -1,18 +1,18 @@
 #!/bin/bash
-# Setlist Navigator — Raspberry Pi Setup Script
+# Setlist CMDR — Raspberry Pi Setup Script
 # Run once as your normal user (not root):  bash setup.sh
 
 set -e
 echo ""
 echo "═══════════════════════════════════════"
-echo "  Setlist Navigator — Pi Setup"
+echo "  Setlist CMDR — Pi Setup"
 echo "═══════════════════════════════════════"
 echo ""
 
 # 1. System packages
 echo "► Installing system packages..."
 sudo apt-get update -qq
-sudo apt-get install -y python3-pip python3-venv hostapd dnsmasq -qq
+sudo apt-get install -y python3-pip python3-venv -qq
 
 # 2. Python virtual environment
 echo "► Creating Python virtual environment..."
@@ -25,9 +25,9 @@ deactivate
 # 3. Systemd service for auto-start
 echo "► Installing systemd service..."
 SERVICE_DIR=$(pwd)
-cat > /tmp/setlist-navigator.service << EOF
+cat > /tmp/setlist-cmdr.service << EOF
 [Unit]
-Description=Setlist Navigator Server
+Description=Setlist CMDR Server
 After=network.target
 
 [Service]
@@ -41,23 +41,15 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-sudo mv /tmp/setlist-navigator.service /etc/systemd/system/setlist-navigator.service
+sudo mv /tmp/setlist-cmdr.service /etc/systemd/system/setlist-cmdr.service
 sudo systemctl daemon-reload
-sudo systemctl enable setlist-navigator.service
-sudo systemctl start setlist-navigator.service
+sudo systemctl enable setlist-cmdr.service
+sudo systemctl start setlist-cmdr.service
 
 echo ""
-echo "✓ Setlist Navigator is running!"
+echo "✓ Setlist CMDR is running!"
 echo ""
 echo "  Leader view  →  http://$(hostname -I | awk '{print $1}'):8000/leader"
 echo "  Musician URL →  http://$(hostname -I | awk '{print $1}'):8000/"
 echo ""
-echo "══════════════════════════════════════"
-echo "  OPTIONAL: Set up Pi as WiFi Hotspot"
-echo "══════════════════════════════════════"
-echo ""
-echo "  Run this to configure the Pi as its own WiFi access point"
-echo "  (useful at gigs with no router):"
-echo ""
-echo "    bash setup-hotspot.sh"
-echo ""
+
