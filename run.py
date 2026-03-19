@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setlist Navigator - Local Dev Runner
+Setlist CMDR - Local Dev Runner
 Works on Windows, macOS, and Linux.
 
 Usage:
@@ -67,18 +67,18 @@ def run_server(port, reload):
     if reload:
         cmd.append("--reload")
     print("\n" + "="*48)
-    print("  Setlist Navigator running on port {}".format(port))
+    print("  Setlist CMDR running on port {}".format(port))
     print("="*48)
     subprocess.run(cmd, cwd=ROOT)
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Setlist Navigator locally")
+    parser = argparse.ArgumentParser(description="Run Setlist CMDR locally")
     parser.add_argument("--port",       type=int, default=8000)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--no-reload",  action="store_true")
     args = parser.parse_args()
 
-    print("\nSetlist Navigator - Dev Runner\n")
+    print("\nSetlist CMDR - Dev Runner\n")
 
     ensure_venv()
     ensure_deps()
