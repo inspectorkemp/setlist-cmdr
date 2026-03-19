@@ -11,8 +11,27 @@ from typing import Optional, List
 import sqlite3
 import os
 import shutil
+import hashlib
 
 DB_PATH = "setlist.db"
+
+# ──────────────────────────────────────────────────────────────
+# Build ID — hash of the key static files.
+# Changes whenever files are updated. Used to bust all caches.
+# ──────────────────────────────────────────────────────────────
+def _compute_build_id():
+    h = hashlib.md5()
+    for fname in ["static/leader.html", "static/musician.html",
+                  "static/leader.css", "static/sw.js"]:
+        try:
+            with open(fname, "rb") as f:
+                h.update(f.read())
+        except FileNotFoundError:
+            pass
+    return h.hexdigest()[:10]
+
+BUILD_ID = _compute_build_id()
+
 
 # ──────────────────────────────────────────────────────────────
 # Database
@@ -82,6 +101,11 @@ live_state = {
     "setlist_name":      None,
     "song_index":        0,
     "is_live":           False,
+}
+
+rehearsal_state = {
+    "active": False,
+    "song":   None,   # full song dict when active
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -171,6 +195,12 @@ class LiveIn(BaseModel):
     setlist_name: Optional[str] = None
     song_index:   int  = 0
     is_live:      bool = False
+
+class RehearsalIn(BaseModel):
+    song_id: int
+
+class RehearsalDeployIn(BaseModel):
+    song_id: int
 
 # ── Songs ─────────────────────────────────────────────────────
 
@@ -393,6 +423,52 @@ async def set_live(state: LiveIn):
     await manager.broadcast({"type": "live_update", **live_state})
     return live_state
 
+# ── Rehearsal ─────────────────────────────────────────────────
+
+@app.post("/api/rehearsal/deploy")
+async def deploy_rehearsal(body: RehearsalDeployIn):
+    """Sets is_live=True with a single song embedded. No setlist needed."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Song not found")
+    song = dict(row)
+    live_state.update({
+        "setlist_id":   None,
+        "setlist_name": "REHEARSAL",
+        "song_index":   0,
+        "is_live":      True,
+        "song":         song,   # embedded directly — no setlist fetch needed
+    })
+    rehearsal_state["active"] = True
+    rehearsal_state["song"]   = song
+    await manager.broadcast({"type": "live_update", **live_state})
+    return {"ok": True, "song": song}
+
+@app.get("/api/rehearsal")
+def get_rehearsal():
+    return rehearsal_state
+
+@app.post("/api/rehearsal")
+async def start_rehearsal(body: RehearsalIn):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Song not found")
+    rehearsal_state["active"] = True
+    rehearsal_state["song"]   = dict(row)
+    await manager.broadcast({"type": "rehearsal_update", "song": rehearsal_state["song"]})
+    return rehearsal_state
+
+@app.delete("/api/rehearsal")
+async def stop_rehearsal():
+    rehearsal_state["active"] = False
+    rehearsal_state["song"]   = None
+    await manager.broadcast({"type": "rehearsal_stop"})
+    return {"ok": True}
+
 # ── Metro state (in-memory) ───────────────────────────────────
 metro_state = {
     "on":           False,
@@ -410,6 +486,9 @@ async def ws_endpoint(websocket: WebSocket):
     import time, json
     await manager.connect(websocket)
     await websocket.send_json({"type": "live_update", **live_state})
+    # Send current rehearsal state to newly connected client
+    if rehearsal_state["active"] and rehearsal_state["song"]:
+        await websocket.send_json({"type": "rehearsal_update", "song": rehearsal_state["song"]})
     # Send current metro state to newly connected client
     if metro_state["on"]:
         await websocket.send_json({"type": "metronome_start", **metro_state})
@@ -461,22 +540,38 @@ async def ws_endpoint(websocket: WebSocket):
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+def _inject_build(html: str) -> str:
+    """Replace the placeholder CSS version and inject BUILD_ID meta tag."""
+    # Bust the CSS link regardless of whatever ?v= value is in the file
+    import re
+    html = re.sub(r'/static/leader\.css(\?v=[^"]*)?', f'/static/leader.css?v={BUILD_ID}', html)
+    # Inject a meta tag so the SW and JS can read the build ID
+    meta = f'<meta charset="UTF-8">\n<meta name="build-id" content="{BUILD_ID}">'
+    html = html.replace('<meta charset="UTF-8">', meta)
+    return html
+
 @app.get("/")
 def root():
-    r = FileResponse("static/musician.html")
-    r.headers["Cache-Control"] = "no-store"
-    return r
+    with open("static/musician.html", encoding="utf-8") as f:
+        html = _inject_build(f.read())
+    return Response(html, media_type="text/html",
+                    headers={"Cache-Control": "no-store"})
 
 @app.get("/leader")
 def leader_page():
-    r = FileResponse("static/leader.html")
-    r.headers["Cache-Control"] = "no-store"
-    return r
+    with open("static/leader.html", encoding="utf-8") as f:
+        html = _inject_build(f.read())
+    return Response(html, media_type="text/html",
+                    headers={"Cache-Control": "no-store"})
+
+@app.get("/api/version")
+def get_version():
+    return {"build": BUILD_ID}
 
 @app.get("/sw.js")
 def service_worker():
     r = FileResponse("static/sw.js", media_type="application/javascript")
-    r.headers["Cache-Control"] = "no-cache"  # SW must always be re-checked
+    r.headers["Cache-Control"] = "no-cache"
     return r
 
 @app.get("/manifest.json")
