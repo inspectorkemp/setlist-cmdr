@@ -6,11 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Setlist CMDR — Leader</title>
-<link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="/static/manifest-leader.json">
 <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
 <meta name="theme-color" content="#08080f">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Fonts served locally if setup-fonts.sh has been run, otherwise via Google -->
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/static/leader.css?v=3">
 <script>
 if ('serviceWorker' in navigator) {
@@ -20,8 +20,56 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<style>
+/* ── SW update notification banner ──────────────────────────── */
+#sw-update-banner {
+  display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
+  background:var(--amber); color:#000;
+  font-family:'DM Sans',sans-serif; font-size:.9rem; font-weight:700;
+  padding:12px 20px; text-align:center;
+  box-shadow:0 -4px 20px rgba(0,0,0,.4);
+}
+#sw-update-banner button {
+  background:#000; color:var(--amber); border:none; border-radius:6px;
+  padding:6px 16px; margin-left:14px; font-weight:700; cursor:pointer;
+  font-family:inherit; font-size:.85rem;
+}
+</style>
 </head>
 <body data-mode="ipad">
+<div id="sw-update-banner">
+  New version available. Reload now to get the update.
+  <button onclick="location.reload()">RELOAD NOW</button>
+</div>
+<!-- ── PIN overlay ─────────────────────────────────────────── -->
+<div id="pin-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);
+     z-index:1000;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;gap:24px;padding:40px;">
+  <img src="/static/img/logo_large.png" alt="Setlist CMDR"
+       style="width:clamp(160px,40vw,280px);height:auto;margin-bottom:8px;">
+  <div id="pin-title" style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;
+       letter-spacing:3px;color:var(--amber);">LEADER ACCESS</div>
+  <div id="pin-error" style="display:none;color:var(--red);font-size:.85rem;
+       font-family:'DM Mono',monospace;">Incorrect PIN. Try again.</div>
+  <input id="pin-input" type="password" inputmode="numeric" placeholder="Enter PIN…"
+         autocomplete="off"
+         style="background:var(--surface);border:2px solid var(--border);border-radius:14px;
+                color:var(--text);font-family:'DM Mono',monospace;font-size:2rem;
+                letter-spacing:8px;padding:16px 24px;text-align:center;
+                width:100%;max-width:320px;outline:none;transition:border-color .2s;">
+  <button onclick="submitPin()"
+          style="background:var(--amber);border:none;border-radius:14px;color:#000;
+                 cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.8rem;
+                 letter-spacing:3px;padding:14px 56px;transition:opacity .15s;">
+    UNLOCK
+  </button>
+  <div id="pin-default-notice" style="display:none;font-size:.78rem;color:var(--dim);
+       text-align:center;max-width:320px;line-height:1.6;">
+    Default PIN is <span style="color:var(--amber);font-family:'DM Mono',monospace;">1234</span>.
+    Change it in Settings after logging in.
+  </div>
+</div>
+
 <div id="metro-flash"></div>
 <div id="shell">
 
@@ -63,6 +111,26 @@ if ('serviceWorker' in navigator) {
       </button>
       <input type="file" id="db-upload-input" accept=".db" style="display:none"
              onchange="uploadDatabase(this)">
+      <button id="crew-btn" onclick="openCrewModal()"
+         title="Manage band members"
+         style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                color:var(--dim);font-family:'DM Sans',sans-serif;font-size:.78rem;
+                font-weight:600;padding:5px 12px;white-space:nowrap;cursor:pointer;
+                transition:.15s;display:flex;align-items:center;gap:5px;"
+         onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'"
+         onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">
+        ◈ CREW
+      </button>
+      <button onclick="openSettingsModal()"
+         title="Settings"
+         style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                color:var(--dim);font-family:'DM Sans',sans-serif;font-size:.78rem;
+                font-weight:600;padding:5px 12px;white-space:nowrap;cursor:pointer;
+                transition:.15s;"
+         onmouseover="this.style.color='var(--amber)';this.style.borderColor='var(--amber)'"
+         onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">
+        ⚙ SETTINGS
+      </button>
       <div id="musician-count" onclick="toggleRoster()" title="Click to see who's connected"
            style="cursor:pointer;">◈ 0 CREW</div>
     </div>
@@ -97,6 +165,7 @@ if ('serviceWorker' in navigator) {
       </select>
       <div class="spacer"></div>
       <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(event)">
+      <button class="btn" onclick="downloadCsvTemplate()" title="Download a blank template CSV">▼ Template</button>
       <button class="btn" onclick="document.getElementById('csv-file-input').click()">▲ CSV</button>
       <button class="btn primary" onclick="openSongModal(null)">+ New Song</button>
     </div>
@@ -127,7 +196,7 @@ if ('serviceWorker' in navigator) {
           <button class="btn danger" id="sl-delete-btn" style="padding:5px 10px;font-size:.78rem;flex-shrink:0;" onclick="deleteCurrentSetlist()">Delete</button>
           <span id="sl-editor-dur" style="font-size:.78rem;color:var(--dim);margin-left:4px;flex-shrink:0;"></span>
           <div class="spacer"></div>
-          <input class="search-input" id="lib-search" placeholder="Search library…" oninput="renderLibrary()" style="width:160px;">
+
         </div>
         <div id="sl-status-bar" style="display:none; align-items:center; gap:12px;
           padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border);
@@ -142,7 +211,11 @@ if ('serviceWorker' in navigator) {
         </div>
         <div class="list-area" id="sl-songs" style="padding:12px 16px;"></div>
         <div id="lib-strip" style="display:none;">
-          <div class="lib-title">▲ ADD FROM LIBRARY</div>
+          <div class="lib-header">
+            <span class="lib-title">▲ ADD FROM LIBRARY</span>
+            <input class="search-input" id="lib-search" placeholder="Search library…"
+                   oninput="renderLibrary()" style="flex:1;max-width:280px;min-width:120px;">
+          </div>
           <div id="lib-results"></div>
         </div>
         <!-- Empty state -->
@@ -175,7 +248,9 @@ if ('serviceWorker' in navigator) {
         <button class="btn go"  id="go-live-btn"  onclick="goLive()">▶ ENGAGE</button>
         <button class="btn end" id="end-live-btn" onclick="endShow()" style="display:none;">◼ STAND DOWN</button>
       </div>
+
     </div>
+
 
     <!-- ── LIVE: full stage layout ──────────────────────────── -->
     <div id="live-stage-wrap" style="display:none; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
@@ -200,7 +275,9 @@ if ('serviceWorker' in navigator) {
           <option value="20" selected>20s</option>
           <option value="30">30s</option>
         </select>
-        <button class="ctrl-bar-btn danger" onclick="endShow()">◼ END</button>
+        <button class="ctrl-bar-btn danger" id="rehear-end-btn" onclick="stopRehearsal()"
+                style="display:none;background:var(--purple);border-color:var(--purple);">◼ END REHEARSAL</button>
+        <button class="ctrl-bar-btn danger" id="live-end-btn" onclick="endShow()">◼ END</button>
       </div>
 
       <!-- Signal bar (hotkeys) -->
@@ -232,6 +309,12 @@ if ('serviceWorker' in navigator) {
         <button class="l-ctrl active" id="l-btn-mode"   onclick="lToggleMode()">LYRICS</button>
         <button class="l-ctrl"        id="l-btn-scroll" onclick="lToggleScroll()">» AUTO</button>
         <div style="flex:1;"></div>
+        <div class="font-size-ctrl">
+          <span class="font-size-lbl">A</span>
+          <input type="range" id="l-font-slider" min="70" max="160" value="100" step="5"
+                 oninput="lSetFontSize(this.value)" title="Lyrics font size">
+          <span class="font-size-lbl" style="font-size:1.1em;">A</span>
+        </div>
         <button class="l-ctrl" onclick="lXpDown()">♭</button>
         <div id="l-xp-display">+0</div>
         <button class="l-ctrl" onclick="lXpUp()">♯</button>
@@ -240,6 +323,140 @@ if ('serviceWorker' in navigator) {
     </div>
 
   </div>
+
+<!-- ── Crew modal ───────────────────────────────────────────── -->
+<div id="crew-overlay" style="display:none;position:fixed;inset:0;
+     background:rgba(0,0,0,.75);z-index:600;align-items:center;justify-content:center;padding:20px;"
+     onclick="closeCrewModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;
+       width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:12px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;
+           letter-spacing:2px;color:var(--amber);flex:1;">BAND MEMBERS</div>
+      <button class="btn" onclick="closeCrewModal()">✕</button>
+    </div>
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);
+         display:flex;gap:10px;">
+      <input id="crew-name-input" type="text" placeholder="Add member name…"
+             maxlength="40" autocomplete="off"
+             style="flex:1;background:var(--card);border:1px solid var(--border);
+                    border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;
+                    font-size:.9rem;padding:8px 12px;outline:none;"
+             onkeydown="if(event.key==='Enter')addBandMember()">
+      <button class="btn primary" onclick="addBandMember()">+ Add</button>
+    </div>
+    <div id="crew-list" style="flex:1;overflow-y:auto;padding:8px 0;"></div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border);
+         font-size:.75rem;color:var(--dim);">
+      Members appear as tap-to-join buttons on the musician screen.
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings modal ───────────────────────────────────────── -->
+<div id="settings-overlay" style="display:none;position:fixed;inset:0;
+     background:rgba(0,0,0,.75);z-index:600;align-items:center;justify-content:center;padding:20px;"
+     onclick="closeSettingsModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;
+       width:100%;max-width:420px;overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:12px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;
+           letter-spacing:2px;color:var(--amber);flex:1;">SETTINGS</div>
+      <button class="btn" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <div style="padding:20px;">
+      <label style="display:block;font-size:.72rem;color:var(--dim);
+             text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+        Change Leader PIN
+      </label>
+      <div style="display:flex;gap:10px;margin-bottom:8px;">
+        <input id="new-pin-input" type="password" inputmode="numeric"
+               placeholder="New PIN (min 4 digits)…" maxlength="20"
+               style="flex:1;background:var(--card);border:1px solid var(--border);
+                      border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;
+                      font-size:1rem;padding:8px 12px;outline:none;letter-spacing:4px;">
+        <button class="btn primary" onclick="changePin()">Save</button>
+      </div>
+      <div id="pin-change-msg" style="font-size:.78rem;color:var(--green);display:none;">
+        PIN updated. You will be logged out.
+      </div>
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn danger" onclick="logout()" style="width:100%;">
+          ◼ LOCK / LOG OUT
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ChordPro full-screen editor ──────────────────────────── -->
+<div id="chord-editor-overlay" style="display:none;position:fixed;inset:0;
+     background:var(--bg);z-index:800;flex-direction:column;">
+
+  <!-- Header bar -->
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;
+       background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;
+         letter-spacing:2px;color:var(--amber);">CHORDPRO EDITOR</div>
+    <div id="ce-song-title" style="font-size:.82rem;color:var(--dim);flex:1;
+         font-family:'DM Mono',monospace;"></div>
+    <div style="display:flex;gap:6px;">
+      <button type="button" id="ce-lyrics-btn" onclick="setCeMode('lyrics')"
+              class="btn" style="font-size:.78rem;padding:4px 12px;
+              background:var(--amber);color:#000;border-color:var(--amber);">
+        LYRICS
+      </button>
+      <button type="button" id="ce-chords-btn" onclick="setCeMode('chords')"
+              class="btn" style="font-size:.78rem;padding:4px 12px;">
+        CHORDS
+      </button>
+    </div>
+    <button type="button" class="btn primary" onclick="closeChordEditor()"
+            style="font-size:.78rem;padding:4px 14px;">
+      ✓ Done
+    </button>
+  </div>
+
+  <!-- Split pane -->
+  <div style="display:flex;flex:1;min-height:0;gap:0;">
+
+    <!-- Left: editor -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;
+         border-right:1px solid var(--border);">
+      <div style="padding:6px 12px;background:var(--surface);
+           border-bottom:1px solid var(--border);flex-shrink:0;
+           font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">
+        Edit
+      </div>
+      <textarea id="ce-input"
+        style="flex:1;background:var(--bg);border:none;outline:none;resize:none;
+               color:var(--text);font-family:'DM Mono',monospace;
+               font-size:clamp(.9rem,1.8vw,1.1rem);line-height:1.9;
+               padding:16px 20px;width:100%;"
+        spellcheck="false"
+        oninput="updateCePreview()"
+        placeholder="[G]Here comes the [Em]sun…"></textarea>
+    </div>
+
+    <!-- Right: preview -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+      <div style="padding:6px 12px;background:var(--surface);
+           border-bottom:1px solid var(--border);flex-shrink:0;
+           font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">
+        Preview
+      </div>
+      <div id="ce-preview"
+           style="flex:1;overflow-y:auto;padding:16px 20px;
+                  font-family:'DM Mono',monospace;
+                  font-size:clamp(.9rem,1.8vw,1.1rem);line-height:2;
+                  white-space:pre-wrap;color:var(--text);">
+      </div>
+    </div>
+
+  </div>
+</div>
 
 </div><!-- /shell -->
 
@@ -284,7 +501,7 @@ if ('serviceWorker' in navigator) {
           Expected columns (any order, any header name):<br>
           title, artist, key, tempo, duration
         </div>
-        <a href="#" onclick="downloadCsvTemplate(event)"
+        <a href="#" onclick="event.preventDefault();downloadCsvTemplate()"
            style="color:var(--amber);font-size:.82rem;margin-top:4px;">
           ▼ Template CSV
         </a>
@@ -367,7 +584,13 @@ if ('serviceWorker' in navigator) {
         <textarea id="f-lyrics" placeholder="Paste or type lyrics here…" style="min-height:160px;"></textarea>
       </div>
       <div class="form-group">
-        <label>Chords <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(ChordPro — use [C], [Am7], etc. inline)</span></label>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">
+          <label style="margin-bottom:0;">Chords <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(ChordPro — use [C], [Am7], etc. inline)</span></label>
+          <button type="button" class="btn" onclick="openChordEditor()"
+                  style="padding:3px 10px;font-size:.72rem;flex-shrink:0;">
+            ⛶ Full Editor
+          </button>
+        </div>
         <textarea id="f-chords" placeholder="[G]Here comes the [Em]sun [C]doo doo doo [D]doo&#10;[G]Here comes the [Em]sun [C]and I say [D]it's alright" style="min-height:160px;"></textarea>
         <div class="hint">Each musician can choose to see lyrics, chords, or both. Tabs or chords not in ChordPro? Paste them in the Chords field as-is.</div>
       </div>
@@ -414,22 +637,42 @@ let liveState = { setlist_id: null, setlist_name: null, song_index: 0, is_live: 
 let liveSlSongs = [];
 
 // ── Tabs ──────────────────────────────────────────────────────
-function showTab(tab) {
+function showTab(tab, clickedBtn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tab + '-panel').classList.add('active');
-  event.currentTarget.classList.add('active');
+  // Highlight the correct tab button whether called from a click or programmatically
+  const btn = clickedBtn || document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (btn) btn.classList.add('active');
   if (tab === 'live') refreshLivePanel();
   if (tab === 'songs') loadSongs();
   if (tab === 'setlist') { loadSongs(); loadSetlists(); }
 }
 
+// ── Auth ─────────────────────────────────────────────────────
+let _token = localStorage.getItem('cmdr_token') || '';
+
+function _authHeaders(extra = {}) {
+  return { ...extra, ...(  _token ? { 'Authorization': 'Bearer ' + _token } : {}) };
+}
+
+async function _checkResponse(res) {
+  if (res.status === 401) {
+    _token = '';
+    localStorage.removeItem('cmdr_token');
+    showPinOverlay();
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error('API error ' + res.status);
+  return res.json();
+}
+
 // ── API helpers ───────────────────────────────────────────────
 const api = {
-  get:    (url)        => fetch(url).then(r => r.json()),
-  post:   (url, body)  => fetch(url, { method:'POST',   headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).then(r => r.json()),
-  put:    (url, body)  => fetch(url, { method:'PUT',    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).then(r => r.json()),
-  delete: (url)        => fetch(url, { method:'DELETE' }).then(r => r.json()),
+  get:    (url)        => fetch(url, { headers: _authHeaders() }).then(_checkResponse),
+  post:   (url, body)  => fetch(url, { method:'POST',   headers: _authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(body) }).then(_checkResponse),
+  put:    (url, body)  => fetch(url, { method:'PUT',    headers: _authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(body) }).then(_checkResponse),
+  delete: (url)        => fetch(url, { method:'DELETE', headers: _authHeaders() }).then(_checkResponse),
 };
 
 // ── Duration helpers ──────────────────────────────────────────
@@ -480,7 +723,77 @@ function songCard(s) {
       <div class="s-sub">${meta}</div>
     </div>
     <span class="status-badge s-${s.status}">${s.status.replace('_',' ')}</span>
+    <button class="btn rehear-btn" onclick="event.stopPropagation(); startRehearsal(${s.id})"
+            title="Send to all musician screens for rehearsal">&#9654; Rehearse</button>
   </div>`;
+}
+
+// ── ChordPro full-screen editor ──────────────────────────────
+let ceMode = 'lyrics';
+
+function openChordEditor() {
+  const overlay = document.getElementById('chord-editor-overlay');
+  // Copy current textarea content into the editor
+  document.getElementById('ce-input').value =
+    document.getElementById('f-chords').value;
+  // Show song title for context
+  const title = document.getElementById('f-title').value.trim();
+  document.getElementById('ce-song-title').textContent = title || 'New Song';
+  // Reset to lyrics mode
+  ceMode = 'lyrics';
+  setCeMode('lyrics');
+  overlay.style.display = 'flex';
+  document.getElementById('ce-input').focus();
+}
+
+function closeChordEditor() {
+  // Write back to the modal textarea
+  document.getElementById('f-chords').value =
+    document.getElementById('ce-input').value;
+  document.getElementById('chord-editor-overlay').style.display = 'none';
+}
+
+function setCeMode(mode) {
+  ceMode = mode;
+  const lBtn = document.getElementById('ce-lyrics-btn');
+  const cBtn = document.getElementById('ce-chords-btn');
+  if (mode === 'lyrics') {
+    lBtn.style.background  = 'var(--amber)';
+    lBtn.style.color       = '#000';
+    lBtn.style.borderColor = 'var(--amber)';
+    cBtn.style.background  = 'var(--card)';
+    cBtn.style.color       = 'var(--dim)';
+    cBtn.style.borderColor = 'var(--border)';
+  } else {
+    cBtn.style.background  = 'var(--amber)';
+    cBtn.style.color       = '#000';
+    cBtn.style.borderColor = 'var(--amber)';
+    lBtn.style.background  = 'var(--card)';
+    lBtn.style.color       = 'var(--dim)';
+    lBtn.style.borderColor = 'var(--border)';
+  }
+  updateCePreview();
+}
+
+function updateCePreview() {
+  const raw     = document.getElementById('ce-input').value;
+  const preview = document.getElementById('ce-preview');
+  if (!raw.trim()) {
+    preview.innerHTML =
+      '<span style="color:var(--dim);font-style:italic;">Preview appears as you type…</span>';
+    return;
+  }
+  if (ceMode === 'lyrics') {
+    preview.innerHTML = raw
+      .replace(/\[[^\]]+\]/g, '')
+      .replace(/\n/g, '<br>');
+  } else {
+    preview.innerHTML = raw
+      .replace(/\[([^\]]+)\]/g,
+        '<span style="color:var(--amber);font-size:.82em;font-weight:500;' +
+        'position:relative;top:-.3em;margin:0 1px;">$1</span>')
+      .replace(/\n/g, '<br>');
+  }
 }
 
 // ── Song modal ────────────────────────────────────────────────
@@ -868,6 +1181,11 @@ async function sendSignal(idx) {
 }
 
 document.addEventListener('keydown', e => {
+  // Escape closes the chord editor if open
+  if (e.key === 'Escape') {
+    const ce = document.getElementById('chord-editor-overlay');
+    if (ce && ce.style.display === 'flex') { closeChordEditor(); return; }
+  }
   if (!liveState.is_live) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   const idx = ['F1','F2','F3','F4','F5','F6','F7','F8'].indexOf(e.key);
@@ -876,9 +1194,48 @@ document.addEventListener('keydown', e => {
   sendSignal(idx);
 });
 
+// ── Rehearsal ────────────────────────────────────────────────
+let rehearActive = false;
+
+async function startRehearsal(songId) {
+  try {
+    const result = await api.post('/api/rehearsal/deploy', { song_id: songId });
+    // Populate liveSlSongs with the single song so the leader's stage works
+    liveSlSongs = [result.song];
+    liveState   = { setlist_id: null, setlist_name: 'REHEARSAL', song_index: 0, is_live: true };
+    rehearActive = true;
+    // Highlight the song card button
+    document.querySelectorAll('.rehear-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector('.rehear-btn[data-id="' + songId + '"]');
+    if (btn) btn.classList.add('active');
+    // Switch to Live Control tab directly without triggering refreshLivePanel
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('live-panel').classList.add('active');
+    const liveTabBtn = document.querySelector('.tab-btn[data-tab="live"]');
+    if (liveTabBtn) liveTabBtn.classList.add('active');
+    applyLiveUI();
+  } catch(e) {
+    console.error('Rehearsal error:', e);
+  }
+}
+
+async function stopRehearsal() {
+  stopMetro();
+  lStopScroll();
+  rehearActive = false;
+  lSong = null;
+  liveState = { setlist_id: null, setlist_name: null, song_index: 0, is_live: false };
+  liveSlSongs = [];
+  await api.put('/api/live', liveState);
+  await api.delete('/api/rehearsal');
+  applyLiveUI();
+  document.querySelectorAll('.rehear-btn').forEach(b => b.classList.remove('active'));
+}
 // ── Live control ──────────────────────────────────────────────
 async function refreshLivePanel() {
   await loadSetlists();
+  await loadSongs();
   const sel = document.getElementById('live-sl-select');
   sel.innerHTML = '<option value="">— pick a setlist —</option>' +
     setlists.filter(sl => sl.active !== 0)
@@ -896,8 +1253,8 @@ function applyLiveUI() {
   const live = liveState.is_live;
 
   // Setup card vs stage layout
-  document.getElementById('live-setup-card').style.display   = live ? 'none' : '';
-  document.getElementById('live-stage-wrap').style.display   = live ? 'flex' : 'none';
+  document.getElementById('live-setup-card').style.display  = live ? 'none' : '';
+  document.getElementById('live-stage-wrap').style.display  = live ? 'flex' : 'none';
   document.getElementById('signal-bar').style.display         = live ? 'flex' : 'none';
   if (live) renderSignalBar();
   document.getElementById('go-live-btn').style.display       = live ? 'none' : '';
@@ -912,6 +1269,12 @@ function applyLiveUI() {
 
   // Toggle panel class for full-height layout
   document.getElementById('live-panel').classList.toggle('is-live', live);
+
+  // Show rehearsal end button vs normal end button
+  const rehearEndBtn = document.getElementById('rehear-end-btn');
+  const liveEndBtn   = document.getElementById('live-end-btn');
+  if (rehearEndBtn) rehearEndBtn.style.display = (live && rehearActive) ? '' : 'none';
+  if (liveEndBtn)   liveEndBtn.style.display   = (live && !rehearActive) ? '' : 'none';
 
   if (live) renderStageCard();
 }
@@ -930,6 +1293,8 @@ async function endShow() {
   if (!confirm('End the show? All musician screens will go to standby.')) return;
   stopMetro();
   lStopScroll();
+  rehearActive = false;
+  document.querySelectorAll('.rehear-btn').forEach(b => b.classList.remove('active'));
   liveState = { setlist_id: null, setlist_name: null, song_index: 0, is_live: false };
   liveSlSongs = [];
   lSong = null;
@@ -1028,6 +1393,18 @@ function lToggleMode() {
 
 function lXpUp()   { if (lXp < 11)  lXp++; lUpdXp(); }
 function lXpDown() { if (lXp > -11) lXp--; lUpdXp(); }
+function lSetFontSize(pct) {
+  const el = document.getElementById('l-song-content');
+  if (el) el.style.fontSize = (parseFloat(pct) / 100) + 'em';
+  localStorage.setItem('l_font_pct', pct);
+}
+(function initLFont() {
+  const saved = localStorage.getItem('l_font_pct');
+  if (saved) {
+    const slider = document.getElementById('l-font-slider');
+    if (slider) { slider.value = saved; lSetFontSize(saved); }
+  }
+})();
 function lUpdXp() {
   document.getElementById('l-xp-display').textContent = (lXp >= 0 ? '+' : '') + lXp;
   lRenderSong();
@@ -1129,21 +1506,27 @@ function renderRoster() {
 }
 
 // WebSocket for real-time roster updates from server
+let leaderWs = null;
+
 (function connectLeaderWS() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${proto}//${location.host}/ws`);
+  leaderWs = ws;
   ws.onmessage = e => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'roster_update') {
-        updateMusicianCount(msg.count, msg.musicians);
-      }
+      if (msg.type === 'roster_update') updateMusicianCount(msg.count, msg.musicians);
+      if (msg.type === 'sync_reply')    handleSyncReply(msg);
     } catch {}
   };
-  ws.onclose = () => setTimeout(connectLeaderWS, 3000);
+  ws.onclose = () => { leaderWs = null; setTimeout(connectLeaderWS, 3000); };
   ws.onerror = () => ws.close();
-  // Announce as leader so it doesn't show up in roster
-  ws.onopen = () => ws.send('name:');
+  ws.onopen  = () => {
+    ws.send('name:');
+    // Start clock sync immediately on connect
+    syncSamples = [];
+    syncClock();
+  };
 })();
 
 // Fallback poll (catches up if WS missed a change)
@@ -1154,12 +1537,49 @@ setInterval(async () => {
   } catch {}
 }, 10000);
 
-// ── Metronome (server-anchored, phase-aligned) ────────────────
-// ── Metronome (local only, auto-timeout) ──────────────────────
+// ── Clock sync (NTP-style over WebSocket) ─────────────────────
+let clockOffset  = 0;   // localTime + clockOffset = serverTime
+let syncSamples  = [];
+
+function syncClock() {
+  if (!leaderWs || leaderWs.readyState !== 1) return;
+  const t0 = Date.now();
+  leaderWs.send(JSON.stringify({ type: 'sync', t0 }));
+}
+
+function handleSyncReply(msg) {
+  const t1      = Date.now();
+  const rtt     = t1 - msg.t0;
+  const offset  = msg.server - (msg.t0 + rtt / 2);
+  syncSamples.push({ rtt, offset });
+  if (syncSamples.length < 10) {
+    // Keep sampling
+    setTimeout(syncClock, 50);
+  } else {
+    // Discard the 5 highest-RTT samples, average the rest
+    syncSamples.sort((a, b) => a.rtt - b.rtt);
+    const good = syncSamples.slice(0, 5);
+    clockOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
+    syncSamples = [];
+    console.log(`[CMDR] Clock synced. offset=${clockOffset.toFixed(1)}ms`);
+  }
+}
+
+function serverNow() { return Date.now() + clockOffset; }
+
+// Re-sync every 45 seconds
+setInterval(() => { syncSamples = []; syncClock(); }, 45000);
+
+// ── Metronome (server-epoch, phase-aligned, Web Audio) ────────
 let metroOn      = false;
-let metroTimer   = null;
-let metroBeat    = 0;
 let metroTimeout = null;
+let metroAudio   = null;   // AudioContext
+let metroNode    = null;   // ScriptProcessorNode scheduling loop
+let metroBpm     = 0;
+let metroEpoch   = 0;      // server_epoch in local time
+let metroBar     = 4;
+let metroNextAt  = 0;      // next scheduled beat in AudioContext time
+let metroBeatIdx = 0;
 
 function toggleMetro() {
   metroOn ? stopMetro() : startMetro();
@@ -1174,38 +1594,74 @@ function startMetro() {
     document.getElementById('leader-metro-sub').textContent = 'no BPM';
     return;
   }
-  metroOn   = true;
-  metroBeat = 0;
+
+  // Epoch = right now in server time. Beat 0 fires immediately.
+  const serverEpoch = serverNow();
+
+  metroBpm   = bpm;
+  metroEpoch = serverEpoch - clockOffset;  // local time equivalent of epoch
+  metroBar   = 4;
+  metroOn    = true;
+
   if (btn) btn.classList.add('active');
   document.getElementById('leader-metro-sub').textContent = `${bpm} bpm`;
-  tick(bpm);
 
+  // Broadcast to all musicians
+  if (leaderWs && leaderWs.readyState === 1) {
+    leaderWs.send(JSON.stringify({
+      type:          'metronome_start',
+      bpm,
+      beats_per_bar: 4,
+      server_epoch:  serverEpoch,
+    }));
+  }
+
+  // Auto-stop timeout
   const secs = parseInt(document.getElementById('l-metro-timeout-sel').value) || 20;
   clearTimeout(metroTimeout);
   metroTimeout = setTimeout(stopMetro, secs * 1000);
+
+  runMetroLoop();
 }
 
-function tick(bpm) {
+function runMetroLoop() {
   if (!metroOn) return;
-  fireFlash(bpm);
-  metroBeat  = (metroBeat + 1) % 4;
-  metroTimer = setTimeout(() => tick(bpm), 60000 / bpm);
+  // Leader epoch = serverNow() at start, so elapsed >= 0 always here.
+  // Fire beat 0 immediately, then hand off to the epoch-anchored scheduler.
+  fireFlash(metroBpm, true);  // beat 0 is always a downbeat
+  runMetroLoop_from(1);
+}
+
+function runMetroLoop_from(beatIdx) {
+  if (!metroOn) return;
+  const beatMs  = 60000 / metroBpm;
+  const isDown  = beatIdx % metroBar === 0;
+  const nextAt  = metroEpoch + beatIdx * beatMs;
+  const msUntil = nextAt - Date.now();
+  setTimeout(() => {
+    if (!metroOn) return;
+    fireFlash(metroBpm, isDown);
+    runMetroLoop_from(beatIdx + 1);
+  }, Math.max(1, msUntil));
 }
 
 function stopMetro() {
   metroOn = false;
-  clearTimeout(metroTimer);
   clearTimeout(metroTimeout);
   document.getElementById('metro-flash').classList.remove('beat');
   const btn = document.getElementById('l-metro-btn');
   if (btn) btn.classList.remove('active');
   const sub = document.getElementById('leader-metro-sub');
   if (sub) sub.textContent = '';
+
+  // Tell musicians to stop
+  if (leaderWs && leaderWs.readyState === 1) {
+    leaderWs.send(JSON.stringify({ type: 'metronome_stop' }));
+  }
 }
 
-function fireFlash(bpm) {
+function fireFlash(bpm, isDown) {
   const flash  = document.getElementById('metro-flash');
-  const isDown = metroBeat === 0;
   const beatMs = 60000 / (bpm || 120);
   flash.style.background = isDown
     ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
@@ -1218,7 +1674,7 @@ function fireFlash(bpm) {
 function restartMetroIfOn() {
   if (!metroOn) return;
   stopMetro();
-  startMetro();
+  setTimeout(startMetro, 100);
 }
 
 // ── Util ──────────────────────────────────────────────────────
@@ -1227,12 +1683,170 @@ function esc(s) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────
-loadSongs();
+// ── PIN / Auth ────────────────────────────────────────────────
+function showPinOverlay() {
+  const overlay = document.getElementById('pin-overlay');
+  overlay.style.display = 'flex';
+  document.getElementById('pin-error').style.display = 'none';
+  document.getElementById('pin-input').value = '';
+  setTimeout(() => document.getElementById('pin-input').focus(), 100);
+  // Check if PIN is still default and show notice
+  fetch('/api/auth/status').then(r => r.json()).then(s => {
+    document.getElementById('pin-default-notice').style.display =
+      s.pin_is_default ? 'block' : 'none';
+  }).catch(() => {});
+}
+
+function hidePinOverlay() {
+  document.getElementById('pin-overlay').style.display = 'none';
+}
+
+document.getElementById('pin-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitPin();
+});
+
+async function submitPin() {
+  const pin = document.getElementById('pin-input').value.trim();
+  if (!pin) return;
+  const errEl = document.getElementById('pin-error');
+  errEl.style.display = 'none';
+  try {
+    const res  = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin })
+    });
+    if (res.status === 401) {
+      errEl.textContent = 'Incorrect PIN. Try again.';
+      errEl.style.display = 'block';
+      document.getElementById('pin-input').value = '';
+      document.getElementById('pin-input').focus();
+      return;
+    }
+    if (!res.ok) {
+      errEl.textContent = 'Server error (' + res.status + '). Check the Pi is running.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const data = await res.json();
+    if (!data.token) throw new Error('no token in response');
+    _token = data.token;
+    localStorage.setItem('cmdr_token', _token);
+    hidePinOverlay();
+    await loadSongs();
+    await loadSetlists();
+    showTab('songs', document.querySelector('.tab-btn[data-tab="songs"]'));
+  } catch(e) {
+    errEl.textContent = 'Could not reach server. Is the Pi on?';
+    errEl.style.display = 'block';
+    console.error('PIN error:', e);
+  }
+}
+
+function logout() {
+  _token = '';
+  localStorage.removeItem('cmdr_token');
+  closeSettingsModal();
+  showPinOverlay();
+}
+
+// ── Crew modal ────────────────────────────────────────────────
+let bandMembers = [];
+
+async function openCrewModal() {
+  document.getElementById('crew-overlay').style.display = 'flex';
+  await loadBandMembers();
+}
+
+function closeCrewModal(e) {
+  if (e && e.target.id !== 'crew-overlay') return;
+  document.getElementById('crew-overlay').style.display = 'none';
+}
+
+async function loadBandMembers() {
+  bandMembers = await api.get('/api/band_members');
+  renderCrewList();
+}
+
+function renderCrewList() {
+  const el = document.getElementById('crew-list');
+  if (!bandMembers.length) {
+    el.innerHTML = '<div style="padding:16px 20px;color:var(--dim);font-size:.85rem;">No members yet. Add some above.</div>';
+    return;
+  }
+  el.innerHTML = bandMembers.map(m => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 20px;
+         border-bottom:1px solid var(--border);">
+      <span style="flex:1;font-size:.9rem;">${esc(m.name)}</span>
+      <button class="btn danger" style="padding:4px 10px;font-size:.75rem;"
+              onclick="removeBandMember(${m.id})">✕</button>
+    </div>`).join('');
+}
+
+async function addBandMember() {
+  const input = document.getElementById('crew-name-input');
+  const name  = input.value.trim();
+  if (!name) return;
+  try {
+    await api.post('/api/band_members', { name });
+    input.value = '';
+    await loadBandMembers();
+  } catch(e) {
+    if (e.message.includes('409')) alert('That name already exists.');
+  }
+}
+
+async function removeBandMember(id) {
+  await api.delete('/api/band_members/' + id);
+  await loadBandMembers();
+}
+
+// ── Settings modal ────────────────────────────────────────────
+function openSettingsModal() {
+  document.getElementById('settings-overlay').style.display = 'flex';
+  document.getElementById('new-pin-input').value = '';
+  document.getElementById('pin-change-msg').style.display = 'none';
+}
+
+function closeSettingsModal(e) {
+  if (e && e.target.id !== 'settings-overlay') return;
+  document.getElementById('settings-overlay').style.display = 'none';
+}
+
+async function changePin() {
+  const newPin = document.getElementById('new-pin-input').value.trim();
+  if (!newPin || newPin.length < 4) { alert('PIN must be at least 4 characters.'); return; }
+  await api.put('/api/auth/pin', { new_pin: newPin });
+  document.getElementById('pin-change-msg').style.display = 'block';
+  // Server invalidated all sessions — log out after brief delay
+  setTimeout(logout, 1500);
+}
+
+
+// Restore mode button label from saved preference
 (function() {
   const btn = document.getElementById('l-btn-mode');
   if (btn) {
     btn.textContent = lMode === 'lyrics' ? 'LYRICS' : 'CHORDS';
     btn.classList.toggle('active', lMode === 'lyrics');
+  }
+})();
+
+// ── Page boot ─────────────────────────────────────────────────
+(async function boot() {
+  if (_token) {
+    try {
+      const res = await fetch('/api/live', { headers: _authHeaders() });
+      if (res.status === 401) throw new Error('expired');
+      await loadSongs();
+      await loadSetlists();
+    } catch {
+      _token = '';
+      localStorage.removeItem('cmdr_token');
+      showPinOverlay();
+    }
+  } else {
+    showPinOverlay();
   }
 })();
 
@@ -1247,6 +1861,20 @@ const CSV_FIELDS = [
   { key: 'duration', label: 'Duration', required: false },
   { key: 'status',   label: 'Status',   required: false },
 ];
+
+function downloadCsvTemplate() {
+  const headers = CSV_FIELDS.map(f => f.label);
+  const example = ['Example Song', 'Example Artist', 'G', '120', '3:45', 'active'];
+  const rows = [headers, example];
+  const csv  = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'setlist-cmdr-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 let csvRows     = [];   // parsed rows (array of objects keyed by original header)
 let csvHeaders  = [];   // original column headers from the file
@@ -1495,18 +2123,16 @@ function parseStatus(val) {
   return map[v] || 'active';
 }
 
-// ── Template download ─────────────────────────────────────────
-function downloadCsvTemplate(e) {
-  e.preventDefault();
-  const csv  = 'title,artist,key,tempo,duration,status\n' +
-               'Bohemian Rhapsody,Queen,Bb,72,5:55,active\n' +
-               'Hotel California,Eagles,Bm,147,6:30,active\n';
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'),
-                 { href: url, download: 'songs-template.csv' });
-  a.click();
-  URL.revokeObjectURL(url);
+
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'sw_updated') {
+      document.getElementById('sw-update-banner').style.display = 'block';
+    }
+  });
 }
 </script>
 </body>
