@@ -742,6 +742,21 @@ async def ws_endpoint(websocket: WebSocket):
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/fonts.css")
+def serve_fonts_css():
+    """Serve locally cached font CSS if setup-fonts.sh has been run,
+    otherwise redirect to Google Fonts so the app always works."""
+    local = os.path.join("static", "fonts", "fonts.css")
+    if os.path.exists(local):
+        return FileResponse(local, media_type="text/css",
+                           headers={"Cache-Control": "public, max-age=86400"})
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(
+        "https://fonts.googleapis.com/css2?family=Bebas+Neue"
+        "&family=DM+Mono:ital,wght@0,300;0,400;0,500"
+        "&family=DM+Sans:wght@400;500;600;700&display=swap"
+    )
+
 def _inject_build(html: str) -> str:
     """Replace the placeholder CSS version and inject BUILD_ID meta tag."""
     # Bust the CSS link regardless of whatever ?v= value is in the file
