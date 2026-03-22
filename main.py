@@ -12,6 +12,10 @@ import sqlite3
 import os
 import shutil
 import hashlib
+import secrets
+import time
+from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 DB_PATH = "setlist.db"
 
@@ -77,6 +81,17 @@ def init_db():
             FOREIGN KEY (setlist_id) REFERENCES setlists(id),
             FOREIGN KEY (song_id)    REFERENCES songs(id)
         );
+
+        CREATE TABLE IF NOT EXISTS app_state (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS band_members (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name     TEXT NOT NULL UNIQUE,
+            position INTEGER DEFAULT 0
+        );
     """)
     conn.commit()
     # Migrations for existing databases
@@ -90,23 +105,87 @@ def init_db():
         conn.commit()
     except Exception:
         pass
+    # band_members added in 2025 — create if missing on older databases
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS band_members (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                name     TEXT NOT NULL UNIQUE,
+                position INTEGER DEFAULT 0
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 # ──────────────────────────────────────────────────────────────
-# Live state  (kept in memory — resets on server restart)
+# Live state  (persisted to DB so server restarts are transparent)
 # ──────────────────────────────────────────────────────────────
 
-live_state = {
-    "setlist_id":        None,
-    "setlist_name":      None,
-    "song_index":        0,
-    "is_live":           False,
-}
+import json as _json
 
-rehearsal_state = {
+def _save_state(key: str, value: dict):
+    """Persist a state dict to app_state table."""
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)",
+        (key, _json.dumps(value))
+    )
+    conn.commit()
+    conn.close()
+
+def _load_state(key: str, default: dict) -> dict:
+    """Load a state dict from app_state table, returning default if missing.
+    Safe to call before init_db() — returns default if table does not exist yet."""
+    try:
+        conn = get_db()
+        row = conn.execute("SELECT value FROM app_state WHERE key=?", (key,)).fetchone()
+        conn.close()
+        if row:
+            try:
+                return _json.loads(row[0])
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return dict(default)
+
+# Load persisted state on startup (falls back to defaults if first run)
+live_state = _load_state("live_state", {
+    "setlist_id":   None,
+    "setlist_name": None,
+    "song_index":   0,
+    "is_live":      False,
+})
+
+rehearsal_state = _load_state("rehearsal_state", {
     "active": False,
-    "song":   None,   # full song dict when active
-}
+    "song":   None,
+})
+
+def _validate_live_state():
+    """
+    Called after init_db(). If the persisted live state references a setlist
+    that no longer exists, reset to not-live rather than serve stale data.
+    Rehearsal state with an embedded song needs no validation.
+    """
+    if not live_state.get("is_live"):
+        return
+    sl_id = live_state.get("setlist_id")
+    if sl_id is None:
+        # Rehearsal mode with embedded song — valid, leave it
+        return
+    conn = get_db()
+    row = conn.execute("SELECT id FROM setlists WHERE id=?", (sl_id,)).fetchone()
+    conn.close()
+    if not row:
+        # Setlist was deleted — reset gracefully
+        live_state.update({
+            "setlist_id": None, "setlist_name": None,
+            "song_index": 0, "is_live": False
+        })
+        _save_state("live_state", live_state)
 
 # ──────────────────────────────────────────────────────────────
 # WebSocket connection manager
@@ -154,14 +233,65 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # ──────────────────────────────────────────────────────────────
+# Auth — PIN-based sessions
+# ──────────────────────────────────────────────────────────────
+
+# In-memory sessions: token -> expiry epoch
+_sessions: dict[str, float] = {}
+_SESSION_TTL = 86400  # 24 hours
+_bearer = HTTPBearer(auto_error=False)
+
+def _get_pin() -> str:
+    """Return the configured PIN from app_state, defaulting to 1234."""
+    conn = get_db()
+    row  = conn.execute("SELECT value FROM app_state WHERE key='leader_pin'").fetchone()
+    conn.close()
+    return row[0] if row else "1234"
+
+def _set_pin(new_pin: str):
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO app_state (key,value) VALUES ('leader_pin',?)", (new_pin,))
+    conn.commit()
+    conn.close()
+
+def _new_token() -> str:
+    token = secrets.token_urlsafe(32)
+    _sessions[token] = time.time() + _SESSION_TTL
+    return token
+
+def _valid_token(token: str) -> bool:
+    exp = _sessions.get(token)
+    if exp is None:
+        return False
+    if time.time() > exp:
+        _sessions.pop(token, None)
+        return False
+    return True
+
+async def require_auth(creds: HTTPAuthorizationCredentials = Depends(_bearer)):
+    token = creds.credentials if creds else None
+    if not token or not _valid_token(token):
+        raise HTTPException(401, "Unauthorized")
+
+# ──────────────────────────────────────────────────────────────
 # App
 # ──────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Setlist CMDR")
 init_db()
+_validate_live_state()
 os.makedirs("static", exist_ok=True)
 
 # ── Pydantic models ───────────────────────────────────────────
+
+class AuthIn(BaseModel):
+    pin: str
+
+class PinChangeIn(BaseModel):
+    new_pin: str
+
+class BandMemberIn(BaseModel):
+    name: str
 
 class SongIn(BaseModel):
     title:    str
@@ -202,6 +332,73 @@ class RehearsalIn(BaseModel):
 class RehearsalDeployIn(BaseModel):
     song_id: int
 
+# ── Auth ──────────────────────────────────────────────────────
+
+@app.post("/api/auth")
+def login(body: AuthIn):
+    if body.pin != _get_pin():
+        raise HTTPException(401, "Incorrect PIN")
+    return {"token": _new_token()}
+
+@app.put("/api/auth/pin", dependencies=[Depends(require_auth)])
+def change_pin(body: PinChangeIn):
+    if not body.new_pin or len(body.new_pin) < 4:
+        raise HTTPException(400, "PIN must be at least 4 characters")
+    _set_pin(body.new_pin)
+    # Invalidate all existing sessions so everyone re-authenticates
+    _sessions.clear()
+    return {"ok": True}
+
+@app.get("/api/auth/status")
+def auth_status():
+    """Returns whether a PIN has been explicitly set (vs still the default)."""
+    conn = get_db()
+    row  = conn.execute("SELECT value FROM app_state WHERE key='leader_pin'").fetchone()
+    conn.close()
+    return {"pin_is_default": row is None}
+
+# ── Band members ───────────────────────────────────────────────
+
+@app.get("/api/band_members")
+def list_band_members():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM band_members ORDER BY position, name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/band_members", dependencies=[Depends(require_auth)])
+def add_band_member(body: BandMemberIn):
+    name = body.name.strip()[:40]
+    if not name:
+        raise HTTPException(400, "Name required")
+    conn = get_db()
+    try:
+        conn.execute("INSERT INTO band_members (name) VALUES (?)", (name,))
+        conn.commit()
+        row = conn.execute("SELECT * FROM band_members WHERE name=?", (name,)).fetchone()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(409, "Name already exists")
+    conn.close()
+    return dict(row)
+
+@app.delete("/api/band_members/{member_id}", dependencies=[Depends(require_auth)])
+def delete_band_member(member_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM band_members WHERE id=?", (member_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.put("/api/band_members/reorder", dependencies=[Depends(require_auth)])
+def reorder_band_members(body: ReorderIn):
+    conn = get_db()
+    for pos, mid in enumerate(body.order):
+        conn.execute("UPDATE band_members SET position=? WHERE id=?", (pos, mid))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
 # ── Songs ─────────────────────────────────────────────────────
 
 @app.get("/api/songs")
@@ -216,7 +413,7 @@ def list_songs(status: Optional[str] = None):
     conn.close()
     return [dict(r) for r in rows]
 
-@app.post("/api/songs", status_code=201)
+@app.post("/api/songs", status_code=201, dependencies=[Depends(require_auth)])
 def create_song(song: SongIn):
     conn = get_db()
     cur = conn.execute(
@@ -239,7 +436,7 @@ def get_song(song_id: int):
         raise HTTPException(404, "Song not found")
     return dict(row)
 
-@app.put("/api/songs/{song_id}")
+@app.put("/api/songs/{song_id}", dependencies=[Depends(require_auth)])
 def update_song(song_id: int, song: SongIn):
     conn = get_db()
     conn.execute(
@@ -253,7 +450,7 @@ def update_song(song_id: int, song: SongIn):
     conn.close()
     return dict(row)
 
-@app.delete("/api/songs/{song_id}")
+@app.delete("/api/songs/{song_id}", dependencies=[Depends(require_auth)])
 def delete_song(song_id: int):
     conn = get_db()
     conn.execute("DELETE FROM setlist_songs WHERE song_id=?", (song_id,))
@@ -271,7 +468,7 @@ def list_setlists():
     conn.close()
     return [dict(r) for r in rows]
 
-@app.post("/api/setlists", status_code=201)
+@app.post("/api/setlists", status_code=201, dependencies=[Depends(require_auth)])
 def create_setlist(sl: SetlistIn):
     conn = get_db()
     max_pos = conn.execute("SELECT COALESCE(MAX(position),0) FROM setlists").fetchone()[0]
@@ -284,7 +481,7 @@ def create_setlist(sl: SetlistIn):
     conn.close()
     return dict(row)
 
-@app.put("/api/setlists/reorder")
+@app.put("/api/setlists/reorder", dependencies=[Depends(require_auth)])
 def reorder_setlists(body: SetlistReorderIn):
     conn = get_db()
     for i, sl_id in enumerate(body.order):
@@ -293,7 +490,7 @@ def reorder_setlists(body: SetlistReorderIn):
     conn.close()
     return {"ok": True}
 
-@app.put("/api/setlists/{sl_id}")
+@app.put("/api/setlists/{sl_id}", dependencies=[Depends(require_auth)])
 def update_setlist(sl_id: int, sl: SetlistIn):
     conn = get_db()
     if sl.active is not None:
@@ -311,7 +508,7 @@ def update_setlist(sl_id: int, sl: SetlistIn):
     conn.close()
     return dict(row)
 
-@app.delete("/api/setlists/{sl_id}")
+@app.delete("/api/setlists/{sl_id}", dependencies=[Depends(require_auth)])
 def delete_setlist(sl_id: int):
     conn = get_db()
     conn.execute("DELETE FROM setlist_songs WHERE setlist_id=?", (sl_id,))
@@ -320,7 +517,7 @@ def delete_setlist(sl_id: int):
     conn.close()
     return {"ok": True}
 
-@app.post("/api/setlists/{sl_id}/clone", status_code=201)
+@app.post("/api/setlists/{sl_id}/clone", status_code=201, dependencies=[Depends(require_auth)])
 def clone_setlist(sl_id: int):
     conn = get_db()
     original = conn.execute("SELECT * FROM setlists WHERE id=?", (sl_id,)).fetchone()
@@ -360,7 +557,7 @@ def get_setlist_songs(sl_id: int):
     conn.close()
     return [dict(r) for r in rows]
 
-@app.post("/api/setlists/{sl_id}/songs", status_code=201)
+@app.post("/api/setlists/{sl_id}/songs", status_code=201, dependencies=[Depends(require_auth)])
 def add_song_to_setlist(sl_id: int, entry: SetlistSongIn):
     conn = get_db()
     # find max position
@@ -376,7 +573,7 @@ def add_song_to_setlist(sl_id: int, entry: SetlistSongIn):
     conn.close()
     return {"ok": True}
 
-@app.put("/api/setlists/{sl_id}/reorder")
+@app.put("/api/setlists/{sl_id}/reorder", dependencies=[Depends(require_auth)])
 def reorder_songs(sl_id: int, body: ReorderIn):
     conn = get_db()
     for i, ss_id in enumerate(body.order):
@@ -388,7 +585,7 @@ def reorder_songs(sl_id: int, body: ReorderIn):
     conn.close()
     return {"ok": True}
 
-@app.delete("/api/setlists/{sl_id}/songs/{ss_id}")
+@app.delete("/api/setlists/{sl_id}/songs/{ss_id}", dependencies=[Depends(require_auth)])
 def remove_from_setlist(sl_id: int, ss_id: int):
     conn = get_db()
     conn.execute("DELETE FROM setlist_songs WHERE id=? AND setlist_id=?", (ss_id, sl_id))
@@ -396,7 +593,7 @@ def remove_from_setlist(sl_id: int, ss_id: int):
     conn.close()
     return {"ok": True}
 
-@app.put("/api/setlists/{sl_id}/songs/{ss_id}/section")
+@app.put("/api/setlists/{sl_id}/songs/{ss_id}/section", dependencies=[Depends(require_auth)])
 def set_section_label(sl_id: int, ss_id: int, body: dict):
     conn = get_db()
     conn.execute(
@@ -417,15 +614,16 @@ def get_live():
 def get_musicians():
     return {"count": manager.count(), "musicians": manager.roster()}
 
-@app.put("/api/live")
+@app.put("/api/live", dependencies=[Depends(require_auth)])
 async def set_live(state: LiveIn):
     live_state.update(state.dict())
+    _save_state("live_state", live_state)
     await manager.broadcast({"type": "live_update", **live_state})
     return live_state
 
 # ── Rehearsal ─────────────────────────────────────────────────
 
-@app.post("/api/rehearsal/deploy")
+@app.post("/api/rehearsal/deploy", dependencies=[Depends(require_auth)])
 async def deploy_rehearsal(body: RehearsalDeployIn):
     """Sets is_live=True with a single song embedded. No setlist needed."""
     conn = get_db()
@@ -443,6 +641,8 @@ async def deploy_rehearsal(body: RehearsalDeployIn):
     })
     rehearsal_state["active"] = True
     rehearsal_state["song"]   = song
+    _save_state("rehearsal_state", rehearsal_state)
+    _save_state("live_state", live_state)
     await manager.broadcast({"type": "live_update", **live_state})
     return {"ok": True, "song": song}
 
@@ -450,7 +650,7 @@ async def deploy_rehearsal(body: RehearsalDeployIn):
 def get_rehearsal():
     return rehearsal_state
 
-@app.post("/api/rehearsal")
+@app.post("/api/rehearsal", dependencies=[Depends(require_auth)])
 async def start_rehearsal(body: RehearsalIn):
     conn = get_db()
     row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
@@ -459,13 +659,15 @@ async def start_rehearsal(body: RehearsalIn):
         raise HTTPException(404, "Song not found")
     rehearsal_state["active"] = True
     rehearsal_state["song"]   = dict(row)
+    _save_state("rehearsal_state", rehearsal_state)
     await manager.broadcast({"type": "rehearsal_update", "song": rehearsal_state["song"]})
     return rehearsal_state
 
-@app.delete("/api/rehearsal")
+@app.delete("/api/rehearsal", dependencies=[Depends(require_auth)])
 async def stop_rehearsal():
     rehearsal_state["active"] = False
     rehearsal_state["song"]   = None
+    _save_state("rehearsal_state", rehearsal_state)
     await manager.broadcast({"type": "rehearsal_stop"})
     return {"ok": True}
 
@@ -583,7 +785,7 @@ def manifest():
 class SignalIn(BaseModel):
     text: str
 
-@app.post("/api/signal")
+@app.post("/api/signal", dependencies=[Depends(require_auth)])
 async def send_signal(sig: SignalIn):
     if not sig.text.strip():
         raise HTTPException(400, "Signal text cannot be empty")
@@ -600,7 +802,7 @@ def download_db():
     r.headers["Cache-Control"] = "no-store"
     return r
 
-@app.post("/api/db/upload")
+@app.post("/api/db/upload", dependencies=[Depends(require_auth)])
 async def upload_db(file: UploadFile = File(...)):
     from datetime import datetime
     tmp_path = DB_PATH + ".tmp"
