@@ -10,6 +10,12 @@ A full-featured setlist and song management system that runs entirely on your lo
 
 ## Features
 
+**PIN-protected leader interface**
+The band leader page requires a PIN to access. The default PIN is `1234` and should be changed on first login via the Settings panel. A 24-hour session token is stored on the device so the leader does not need to re-enter the PIN on every page load. All song editing, setlist management, live control, and database operations require authentication. The musician page is open to all with no PIN required.
+
+**Band member roster**
+The leader manages a named list of band members from the Crew modal in the nav bar. These names appear as tap-to-join buttons on the musician screen, so each musician can select themselves with one tap rather than typing. Names are stored in the database and persist across restarts. The freeform text input remains available for guests or anyone not on the roster.
+
 **Song library**
 Full management of your entire repertoire. Each song stores title, artist, key, tempo, duration, status, lyrics, chords in ChordPro format, and notes. Search by title or artist. Filter by status. Four status levels: Active, Needs Work, Maybe, and Retired.
 
@@ -37,8 +43,14 @@ Each musician independently toggles between Lyrics and Chords view with the pref
 **ChordPro chords**
 Chord annotations sit inline with lyrics using square bracket notation. Transpose is applied client-side in real time.
 
+**Full-screen ChordPro editor**
+When editing a song, clicking the Full Editor button in the Chords field opens a fullscreen side-by-side editor. The left pane is a raw text editor for ChordPro content. The right pane renders a live preview that updates on every keystroke. LYRICS and CHORDS toggle buttons in the header let you switch the preview between both views before saving. Press Escape or click Done to write the content back to the song form.
+
 **Musician roster**
-The leader sees a live count of connected musicians in the nav bar. Clicking the count opens a popup listing each musician by name. The roster updates in real time as people join or leave.
+The leader sees a live count of connected musicians in the nav bar. Clicking the count opens a popup listing each connected musician by name. The roster updates in real time as people join or leave.
+
+**Live state persistence**
+The current setlist, song index, and live status are written to the database on every change. If the server restarts mid-show, all connected clients automatically receive the current state when they reconnect. Musicians and the leader see no interruption beyond the brief reconnect.
 
 **Database backup and restore**
 Download the live SQLite database directly from the leader browser with one click. The file is timestamped automatically. Upload a previously saved backup to restore it. The server validates the file before replacing anything and saves an automatic backup of the current database first.
@@ -47,7 +59,7 @@ Download the live SQLite database directly from the leader browser with one clic
 A toggle in the nav bar switches between iPad mode and Desktop mode. iPad mode uses larger tap targets, bigger fonts, and press feedback instead of hover states. Desktop mode is compact and mouse-optimized. The selected mode is saved per device and defaults to iPad.
 
 **Progressive Web App**
-Both the leader and musician pages can be installed to the home screen on iPad, iPhone, and Android. Each page has its own manifest so the installed icon opens the correct URL. Once installed the app launches full-screen with no browser chrome. The interface shell loads from the device cache instantly.
+Both the leader and musician pages can be installed to the home screen on iPad, iPhone, and Android. Each page has its own manifest so the installed icon opens the correct URL. The leader icon opens `/leader` and the musician icon opens `/`. Once installed the app launches full-screen with no browser chrome.
 
 ---
 
@@ -106,6 +118,32 @@ Musicians and the band leader open a browser and navigate to that IP on port 800
 
 ---
 
+## First login
+
+The default leader PIN is `1234`. After logging in for the first time, change the PIN immediately:
+
+1. Click **Settings** in the top-right nav bar
+2. Enter a new PIN (minimum 4 characters)
+3. Click **Save**
+
+You will be logged out and prompted to log in again with the new PIN. All existing sessions are invalidated when the PIN changes.
+
+To lock the leader page manually without closing the browser, click **Settings** and then **Lock / Log Out**.
+
+---
+
+## Setting up band members
+
+Adding named crew members creates tap-to-join buttons on the musician screen so each person can connect with one tap:
+
+1. Click **Crew** in the top-right nav bar
+2. Type a name and click **Add** (or press Enter)
+3. Repeat for each band member
+
+Members appear immediately on the musician name screen. To remove a member click the X button next to their name in the Crew modal. Members who are not on the roster can still join by typing their name in the text field.
+
+---
+
 ## Installing as a PWA (home screen app)
 
 The leader and musician pages each have their own home screen icon that opens the correct page. Install them separately.
@@ -125,7 +163,7 @@ The leader and musician pages each have their own home screen icon that opens th
 
 ## Band leader workflow
 
-1. Open `http://<pi-ip>:8000/leader` in your browser or installed PWA
+1. Open `http://<pi-ip>:8000/leader` and log in with your PIN
 2. Go to the **Songs** tab and add your entire repertoire. Set tempo and key on each song so the metronome and transpose features work correctly.
 3. Go to the **Setlists** tab and create a setlist for each show. Add songs, drag to reorder, and add section labels to divide the list.
 4. Mark setlists you are not currently using as Inactive so they do not appear in the Live Control picker.
@@ -138,7 +176,7 @@ The leader and musician pages each have their own home screen icon that opens th
 
 1. Go to the **Songs** tab
 2. Find any song and click the **Rehearse** button on the right side of the song row
-3. The leader view switches immediately to the Live Control stage showing the full song with lyrics, chords, and all controls active
+3. The leader view switches immediately to the Live Control stage showing the full song with all controls active
 4. All connected musician screens show the song with a purple Rehearsal banner at the top
 5. When done, click **End Rehearsal** in the control bar
 
@@ -148,7 +186,7 @@ The leader and musician pages each have their own home screen icon that opens th
 
 1. Connect your device to the same network as the Pi
 2. Open Safari or Chrome and go to `http://<pi-ip>:8000/`
-3. Enter your name and tap **JOIN**
+3. Tap your name from the crew buttons, or type your name and tap **Join**
 4. The screen shows **STANDBY** until the leader engages a show or starts a rehearsal
 5. Once live, your screen updates automatically every time the leader moves to a new song
 6. Tap **LYRICS** or **CHORDS** to switch views (saved on your device)
@@ -234,6 +272,19 @@ sudo systemctl start setlist-cmdr
 
 ---
 
+## Font caching (offline venues)
+
+By default the app loads fonts from Google Fonts, which requires an internet connection. To make fonts load entirely from the Pi with no external dependency, run the font cache script once while the Pi has internet access:
+
+```bash
+bash setup-fonts.sh
+sudo systemctl restart setlist-cmdr
+```
+
+This downloads Bebas Neue, DM Mono, and DM Sans from Google Fonts, stores the files in `static/fonts/`, and generates a local CSS file. After restarting, the server serves fonts from that local cache. If the cache does not exist the app falls back to Google Fonts automatically, so the app works either way.
+
+---
+
 ## Service management (Pi)
 
 ```bash
@@ -254,6 +305,7 @@ setlist-cmdr/
 ├── requirements.txt         Python dependencies
 ├── setlist.db               SQLite database, auto-created on first run
 ├── setup.sh                 First-time Pi setup script
+├── setup-fonts.sh           Optional: caches fonts locally for offline use
 ├── start.bat                Windows quick-start
 ├── start.sh                 Linux and macOS quick-start
 └── static/
