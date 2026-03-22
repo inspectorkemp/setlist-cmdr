@@ -1443,7 +1443,7 @@ async function uploadDatabase(input) {
   fd.append('file', file);
 
   try {
-    const resp = await fetch('/api/db/upload', { method: 'POST', body: fd });
+    const resp = await fetch('/api/db/upload', { method: 'POST', body: fd, headers: _authHeaders() });
     const data = await resp.json();
     if (!resp.ok) {
       alert('Upload failed: ' + (data.detail || resp.statusText));
