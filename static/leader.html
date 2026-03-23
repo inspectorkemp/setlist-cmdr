@@ -397,12 +397,16 @@ if ('serviceWorker' in navigator) {
 
   <!-- Header bar -->
   <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;
-       background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
+       background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;
          letter-spacing:2px;color:var(--amber);">CHORDPRO EDITOR</div>
     <div id="ce-song-title" style="font-size:.82rem;color:var(--dim);flex:1;
-         font-family:'DM Mono',monospace;"></div>
-    <div style="display:flex;gap:6px;">
+         font-family:'DM Mono',monospace;min-width:60px;"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button type="button" id="ce-convert-btn" onclick="toggleConverter()"
+              class="btn" style="font-size:.78rem;padding:4px 12px;">
+        ⇄ Convert
+      </button>
       <button type="button" id="ce-lyrics-btn" onclick="setCeMode('lyrics')"
               class="btn" style="font-size:.78rem;padding:4px 12px;
               background:var(--amber);color:#000;border-color:var(--amber);">
@@ -422,22 +426,59 @@ if ('serviceWorker' in navigator) {
   <!-- Split pane -->
   <div style="display:flex;flex:1;min-height:0;gap:0;">
 
-    <!-- Left: editor -->
+    <!-- Left: editor / converter -->
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;
          border-right:1px solid var(--border);">
-      <div style="padding:6px 12px;background:var(--surface);
-           border-bottom:1px solid var(--border);flex-shrink:0;
-           font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">
-        Edit
+
+      <!-- Editor view -->
+      <div id="ce-editor-view" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+        <div style="padding:6px 12px;background:var(--surface);
+             border-bottom:1px solid var(--border);flex-shrink:0;
+             font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">
+          ChordPro
+        </div>
+        <textarea id="ce-input"
+          style="flex:1;background:var(--bg);border:none;outline:none;resize:none;
+                 color:var(--text);font-family:'DM Mono',monospace;
+                 font-size:clamp(.9rem,1.8vw,1.1rem);line-height:1.9;
+                 padding:16px 20px;width:100%;"
+          spellcheck="false"
+          oninput="updateCePreview()"
+          placeholder="[G]Here comes the [Em]sun…"></textarea>
       </div>
-      <textarea id="ce-input"
-        style="flex:1;background:var(--bg);border:none;outline:none;resize:none;
-               color:var(--text);font-family:'DM Mono',monospace;
-               font-size:clamp(.9rem,1.8vw,1.1rem);line-height:1.9;
-               padding:16px 20px;width:100%;"
-        spellcheck="false"
-        oninput="updateCePreview()"
-        placeholder="[G]Here comes the [Em]sun…"></textarea>
+
+      <!-- Converter view -->
+      <div id="ce-converter-view" style="display:none;flex-direction:column;flex:1;min-height:0;">
+        <div style="padding:6px 12px;background:var(--surface);
+             border-bottom:1px solid var(--border);flex-shrink:0;
+             display:flex;align-items:center;gap:10px;">
+          <span style="font-size:.7rem;color:var(--dim);text-transform:uppercase;
+                letter-spacing:1px;flex:1;">Paste chords-above-lyrics here</span>
+          <button type="button" class="btn primary" onclick="runConverter()"
+                  style="font-size:.75rem;padding:4px 12px;">
+            ⇄ Convert to ChordPro
+          </button>
+          <button type="button" class="btn" onclick="toggleConverter()"
+                  style="font-size:.75rem;padding:4px 10px;">Cancel</button>
+        </div>
+        <div style="padding:10px 16px;background:var(--surface);
+             border-bottom:1px solid var(--border);flex-shrink:0;
+             font-size:.75rem;color:var(--dim);line-height:1.6;">
+          Paste a standard chord chart with chords on one line and lyrics on the next.
+          Works with Ultimate Guitar, OnSong exports, and most plain-text chord sheets.
+        </div>
+        <textarea id="ce-convert-input"
+          style="flex:1;background:var(--bg);border:none;outline:none;resize:none;
+                 color:var(--text);font-family:'DM Mono',monospace;
+                 font-size:clamp(.9rem,1.8vw,1.1rem);line-height:1.9;
+                 padding:16px 20px;width:100%;"
+          spellcheck="false"
+          placeholder="G           Em          C      D
+Here comes the sun, doo doo doo doo
+G           Em
+Here comes the sun…"></textarea>
+      </div>
+
     </div>
 
     <!-- Right: preview -->
@@ -730,6 +771,111 @@ function songCard(s) {
 
 // ── ChordPro full-screen editor ──────────────────────────────
 let ceMode = 'lyrics';
+let ceConverterOpen = false;
+
+function toggleConverter() {
+  ceConverterOpen = !ceConverterOpen;
+  document.getElementById('ce-editor-view').style.display    = ceConverterOpen ? 'none'  : 'flex';
+  document.getElementById('ce-converter-view').style.display = ceConverterOpen ? 'flex'  : 'none';
+  const btn = document.getElementById('ce-convert-btn');
+  btn.style.background  = ceConverterOpen ? 'var(--amber)' : '';
+  btn.style.color       = ceConverterOpen ? '#000' : '';
+  btn.style.borderColor = ceConverterOpen ? 'var(--amber)' : '';
+  if (ceConverterOpen) {
+    document.getElementById('ce-convert-input').focus();
+  }
+}
+
+function runConverter() {
+  const raw    = document.getElementById('ce-convert-input').value;
+  const result = convertToChordPro(raw);
+  document.getElementById('ce-input').value = result;
+  updateCePreview();
+  // Switch back to editor view
+  ceConverterOpen = true;
+  toggleConverter();
+}
+
+function convertToChordPro(text) {
+  // Regex that matches a chord: root note + optional qualifier + optional bass
+  // Covers: Am, G#m7, Bb/F, Cmaj7, F#dim, Asus4, etc.
+  const CHORD_RE = /^[A-G][#b]?(m|maj|min|dim|aug|sus|add|M)?[0-9]*(\/[A-G][#b]?)?$/;
+
+  function isChordToken(token) {
+    return CHORD_RE.test(token.trim());
+  }
+
+  function isChordLine(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    // A chord line has NO lowercase letters (chords are always uppercase-rooted)
+    // and every whitespace-separated token is a valid chord
+    const tokens = trimmed.split(/\s+/).filter(t => t.length > 0);
+    if (tokens.length === 0) return false;
+    return tokens.every(t => isChordToken(t));
+  }
+
+  function convertPair(chordLine, lyricLine) {
+    // Build an array of {pos, chord} sorted by position
+    const chords = [];
+    let match;
+    const re = /\S+/g;
+    while ((match = re.exec(chordLine)) !== null) {
+      chords.push({ pos: match.index, chord: match[0] });
+    }
+
+    if (chords.length === 0) return lyricLine;
+
+    // Walk lyricLine inserting [Chord] markers at the right character positions
+    let result  = '';
+    let lyricIdx = 0;
+
+    for (let i = 0; i < chords.length; i++) {
+      const { pos, chord } = chords[i];
+      // Copy lyric characters up to this chord position
+      const target = Math.min(pos, lyricLine.length);
+      while (lyricIdx < target) {
+        result += lyricLine[lyricIdx++];
+      }
+      result += '[' + chord + ']';
+    }
+    // Append any remaining lyric text
+    while (lyricIdx < lyricLine.length) {
+      result += lyricLine[lyricIdx++];
+    }
+
+    return result.trimEnd();
+  }
+
+  const lines  = text.split('\n');
+  const output = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (isChordLine(line)) {
+      // Peek at the next line
+      const next = i + 1 < lines.length ? lines[i + 1] : '';
+      if (!isChordLine(next) && next !== undefined) {
+        // Pair chord line with lyric line
+        output.push(convertPair(line, next));
+        i += 2;
+      } else {
+        // Chord line with no following lyric — emit chords inline with spaces
+        const chords = line.trim().split(/\s+/).filter(Boolean);
+        output.push(chords.map(c => '[' + c + ']').join(' '));
+        i++;
+      }
+    } else {
+      // Regular lyric line or blank — pass through
+      output.push(line);
+      i++;
+    }
+  }
+
+  return output.join('\n').trim();
+}
 
 function openChordEditor() {
   const overlay = document.getElementById('chord-editor-overlay');
@@ -1552,14 +1698,16 @@ function handleSyncReply(msg) {
   const rtt     = t1 - msg.t0;
   const offset  = msg.server - (msg.t0 + rtt / 2);
   syncSamples.push({ rtt, offset });
-  if (syncSamples.length < 10) {
-    // Keep sampling
-    setTimeout(syncClock, 50);
+  if (syncSamples.length < 16) {
+    setTimeout(syncClock, 40);
   } else {
-    // Discard the 5 highest-RTT samples, average the rest
+    // Discard the 8 worst RTT samples, average the best 8
     syncSamples.sort((a, b) => a.rtt - b.rtt);
-    const good = syncSamples.slice(0, 5);
-    clockOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
+    const good = syncSamples.slice(0, 8);
+    const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
+    // Smooth large jumps to avoid sudden phase shifts mid-performance
+    const delta = newOffset - clockOffset;
+    clockOffset = clockOffset + Math.max(-20, Math.min(20, delta));
     syncSamples = [];
     console.log(`[CMDR] Clock synced. offset=${clockOffset.toFixed(1)}ms`);
   }
@@ -1567,22 +1715,39 @@ function handleSyncReply(msg) {
 
 function serverNow() { return Date.now() + clockOffset; }
 
-// Re-sync every 45 seconds
-setInterval(() => { syncSamples = []; syncClock(); }, 45000);
+// Re-sync every 30 seconds
+setInterval(() => { syncSamples = []; syncClock(); }, 30000);
 
-// ── Metronome (server-epoch, phase-aligned, Web Audio) ────────
+// ── Metronome (Web Audio lookahead scheduler) ────────────────
+// Uses AudioContext.currentTime for sub-millisecond precision scheduling
+// that is immune to main-thread jank and background tab throttling.
 let metroOn      = false;
 let metroTimeout = null;
-let metroAudio   = null;   // AudioContext
-let metroNode    = null;   // ScriptProcessorNode scheduling loop
+let metroAudio   = null;
 let metroBpm     = 0;
-let metroEpoch   = 0;      // server_epoch in local time
+let metroEpoch   = 0;   // server_epoch converted to local Date.now() time
 let metroBar     = 4;
-let metroNextAt  = 0;      // next scheduled beat in AudioContext time
-let metroBeatIdx = 0;
+
+// Lookahead scheduler state
+let _metroSchedTimer = null;
+let _audioEpoch      = 0;   // metroEpoch expressed in AudioContext.currentTime seconds
+
+const LOOKAHEAD_MS   = 100;  // how far ahead to schedule (ms)
+const SCHEDULE_INT   = 25;   // how often the scheduler runs (ms)
 
 function toggleMetro() {
   metroOn ? stopMetro() : startMetro();
+}
+
+function _getOrCreateAudio() {
+  if (!metroAudio) {
+    try {
+      metroAudio = new (window.AudioContext || window.webkitAudioContext)();
+    } catch(e) { return null; }
+  }
+  // Resume if suspended (required after user gesture on iOS/Safari)
+  if (metroAudio.state === 'suspended') metroAudio.resume();
+  return metroAudio;
 }
 
 function startMetro() {
@@ -1595,66 +1760,110 @@ function startMetro() {
     return;
   }
 
-  // Epoch = right now in server time. Beat 0 fires immediately.
-  const serverEpoch = serverNow();
+  const ac = _getOrCreateAudio();
 
+  // Epoch = right now in server time
+  const serverEpoch = serverNow();
   metroBpm   = bpm;
-  metroEpoch = serverEpoch - clockOffset;  // local time equivalent of epoch
+  metroEpoch = serverEpoch - clockOffset;  // local ms equivalent
   metroBar   = 4;
   metroOn    = true;
 
+  // Express metroEpoch in AudioContext time so we can schedule with ac.currentTime
+  // ac.currentTime is seconds from context creation; Date.now() is ms from unix epoch.
+  // Bridge: audioNow ≈ ac.currentTime, wallNow = Date.now()
+  // audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000
+  if (ac) {
+    _audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000;
+  }
+
   if (btn) btn.classList.add('active');
   document.getElementById('leader-metro-sub').textContent = `${bpm} bpm`;
+  const rSub = document.getElementById('r-metro-sub');
+  if (rSub) rSub.textContent = `${bpm} bpm`;
+  const rBtn2 = document.getElementById('r-metro-btn');
+  if (rBtn2) rBtn2.classList.add('active');
 
-  // Broadcast to all musicians
+  // Broadcast to musicians
   if (leaderWs && leaderWs.readyState === 1) {
     leaderWs.send(JSON.stringify({
-      type:          'metronome_start',
-      bpm,
-      beats_per_bar: 4,
-      server_epoch:  serverEpoch,
+      type: 'metronome_start', bpm, beats_per_bar: 4, server_epoch: serverEpoch,
     }));
   }
 
-  // Auto-stop timeout
-  const secs = parseInt(document.getElementById('l-metro-timeout-sel').value) || 20;
+  // Auto-stop
+  const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 20;
   clearTimeout(metroTimeout);
   metroTimeout = setTimeout(stopMetro, secs * 1000);
 
-  runMetroLoop();
+  // Start lookahead scheduler
+  clearInterval(_metroSchedTimer);
+  _metroSchedTimer = setInterval(_metroScheduler, SCHEDULE_INT);
+  _metroScheduler(); // run immediately so beat 0 fires without waiting
 }
 
-function runMetroLoop() {
+// Tracks the highest beat index we have already scheduled a visual flash for
+let _lastScheduledBeat = -1;
+
+function _metroScheduler() {
   if (!metroOn) return;
-  // Leader epoch = serverNow() at start, so elapsed >= 0 always here.
-  // Fire beat 0 immediately, then hand off to the epoch-anchored scheduler.
-  fireFlash(metroBpm, true);  // beat 0 is always a downbeat
-  runMetroLoop_from(1);
+  const ac = metroAudio;
+  if (!ac) {
+    // No AudioContext — fall back to Date.now() scheduling
+    _metroSchedulerFallback();
+    return;
+  }
+
+  const beatSec  = 60 / metroBpm;
+  const nowAudio = ac.currentTime;
+  const horizon  = nowAudio + LOOKAHEAD_MS / 1000;
+
+  // Schedule all beats that fall within the lookahead window
+  let beat = Math.max(0, Math.floor((nowAudio - _audioEpoch) / beatSec));
+  while (true) {
+    const beatTime = _audioEpoch + beat * beatSec;
+    if (beatTime > horizon) break;
+    if (beat > _lastScheduledBeat) {
+      _lastScheduledBeat = beat;
+      const isDown    = beat % metroBar === 0;
+      const delayMs   = Math.max(0, (beatTime - nowAudio) * 1000);
+      // Schedule the visual flash via setTimeout anchored to audio time
+      // The flash itself is visual only so setTimeout is fine here —
+      // a few ms of visual imprecision is imperceptible
+      setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown); }, delayMs);
+    }
+    beat++;
+  }
 }
 
-function runMetroLoop_from(beatIdx) {
-  if (!metroOn) return;
-  const beatMs  = 60000 / metroBpm;
-  const isDown  = beatIdx % metroBar === 0;
-  const nextAt  = metroEpoch + beatIdx * beatMs;
-  const msUntil = nextAt - Date.now();
-  setTimeout(() => {
-    if (!metroOn) return;
-    fireFlash(metroBpm, isDown);
-    runMetroLoop_from(beatIdx + 1);
-  }, Math.max(1, msUntil));
+function _metroSchedulerFallback() {
+  // When AudioContext is unavailable, use epoch-anchored Date.now() scheduling
+  const beatMs = 60000 / metroBpm;
+  const now    = Date.now();
+  const elapsed = now - metroEpoch;
+  const beat   = Math.max(0, Math.floor(elapsed / beatMs));
+  if (beat > _lastScheduledBeat) {
+    _lastScheduledBeat = beat;
+    fireFlash(metroBpm, beat % metroBar === 0);
+  }
 }
 
 function stopMetro() {
   metroOn = false;
   clearTimeout(metroTimeout);
+  clearInterval(_metroSchedTimer);
+  _metroSchedTimer    = null;
+  _lastScheduledBeat  = -1;
   document.getElementById('metro-flash').classList.remove('beat');
   const btn = document.getElementById('l-metro-btn');
   if (btn) btn.classList.remove('active');
   const sub = document.getElementById('leader-metro-sub');
   if (sub) sub.textContent = '';
+  const rSub = document.getElementById('r-metro-sub');
+  if (rSub) rSub.textContent = '';
+  const rBtn = document.getElementById('r-metro-btn');
+  if (rBtn) rBtn.classList.remove('active');
 
-  // Tell musicians to stop
   if (leaderWs && leaderWs.readyState === 1) {
     leaderWs.send(JSON.stringify({ type: 'metronome_stop' }));
   }
