@@ -20,7 +20,7 @@
   --red-bg:     rgba(239,68,68,.12);
   --blue:       #60a5fa;
   --blue-bg:    rgba(96,165,250,.12);
-  --purple:     #a78bfa;
+  --purple:     #0ea5e9;
 
   /* Fluid spacing */
   --sp-xs:  clamp(4px,  0.5vw, 6px);
@@ -418,86 +418,85 @@ html, body {
    ══════════════════════════════════════════════════════════════ */
 body[data-mode="ipad"] {
   /* Override spacing tokens for touch */
-  --sp-xs:  6px;
-  --sp-sm:  12px;
-  --sp-md:  18px;
-  --sp-lg:  24px;
-  /* Override font tokens — bigger for reading at arm's length */
-  --fs-xs:  .78rem;
-  --fs-sm:  .9rem;
-  --fs-md:  1rem;
-  --fs-lg:  1.1rem;
-  --nav-h:  58px;
-  --sl-col: clamp(220px, 30vw, 340px);
-  /* Touch momentum scrolling */
+  --sp-xs:  8px;
+  --sp-sm:  14px;
+  --sp-md:  22px;
+  --sp-lg:  30px;
+  /* Override font tokens — significantly larger for 13" iPad at arm's length */
+  --fs-xs:  .92rem;
+  --fs-sm:  1.05rem;
+  --fs-md:  1.18rem;
+  --fs-lg:  1.32rem;
+  --nav-h:  64px;
+  --sl-col: clamp(240px, 32vw, 360px);
   -webkit-overflow-scrolling: touch;
 }
 
 /* Nav */
 body[data-mode="ipad"] #nav { min-height:var(--nav-h); }
-body[data-mode="ipad"] .nav-brand img { height:42px; }
-body[data-mode="ipad"] .tab-btn { padding:0 20px; font-size:.92rem; }
-body[data-mode="ipad"] #musician-count { font-size:.82rem; padding:6px 14px; }
+body[data-mode="ipad"] .nav-brand img { height:46px; }
+body[data-mode="ipad"] .tab-btn { padding:0 24px; font-size:1.05rem; }
+body[data-mode="ipad"] #musician-count { font-size:.95rem; padding:8px 16px; }
 
-/* All interactive elements: minimum 48px touch target height */
+/* All interactive elements: minimum 56px touch target height */
 body[data-mode="ipad"] .btn {
-  min-height:48px; padding:10px 18px;
-  font-size:.92rem; border-radius:10px;
+  min-height:56px; padding:12px 22px;
+  font-size:1.05rem; border-radius:12px;
 }
 body[data-mode="ipad"] .toolbar {
-  padding:10px 16px; gap:10px;
+  padding:12px 18px; gap:12px;
 }
 body[data-mode="ipad"] .search-input,
 body[data-mode="ipad"] .filter-select {
-  min-height:44px; padding:10px 14px; font-size:.9rem;
+  min-height:52px; padding:12px 16px; font-size:1.05rem;
 }
 
-/* Song cards — taller, easier to tap */
+/* Song cards */
 body[data-mode="ipad"] .song-card {
-  padding:14px 18px; margin-bottom:6px; border-radius:12px;
+  padding:18px 20px; margin-bottom:8px; border-radius:14px;
 }
-body[data-mode="ipad"] .song-card .s-title { font-size:1rem; }
-body[data-mode="ipad"] .song-card .s-sub   { font-size:.78rem; }
+body[data-mode="ipad"] .song-card .s-title { font-size:1.15rem; }
+body[data-mode="ipad"] .song-card .s-sub   { font-size:.92rem; }
 
 /* Setlist items */
-body[data-mode="ipad"] .sl-item { padding:14px 12px 14px 8px; }
-body[data-mode="ipad"] .sl-item .sl-name { font-size:1rem; }
-body[data-mode="ipad"] .sl-drag-handle { font-size:1.2rem; padding:4px 8px; }
-body[data-mode="ipad"] .sl-active-toggle { font-size:.78rem; padding:5px 10px; min-height:34px; }
+body[data-mode="ipad"] .sl-item { padding:16px 14px 16px 10px; }
+body[data-mode="ipad"] .sl-item .sl-name { font-size:1.15rem; }
+body[data-mode="ipad"] .sl-drag-handle { font-size:1.4rem; padding:6px 10px; }
+body[data-mode="ipad"] .sl-active-toggle { font-size:.92rem; padding:8px 14px; min-height:40px; }
 
 /* Setlist song rows */
-body[data-mode="ipad"] .ss-row { padding:12px 14px; }
-body[data-mode="ipad"] .ss-row .ss-title { font-size:1rem; }
-body[data-mode="ipad"] .ss-btn { padding:10px 14px; font-size:.88rem; min-height:42px; }
+body[data-mode="ipad"] .ss-row { padding:16px 18px; }
+body[data-mode="ipad"] .ss-row .ss-title { font-size:1.15rem; }
+body[data-mode="ipad"] .ss-btn { padding:12px 18px; font-size:1rem; min-height:50px; }
 
 /* Live control bar */
 body[data-mode="ipad"] .ctrl-bar-btn {
-  min-height:48px; padding:10px 16px; font-size:.9rem; border-radius:10px;
+  min-height:56px; padding:12px 20px; font-size:1.05rem; border-radius:12px;
 }
-body[data-mode="ipad"] #l-song-title { font-size:clamp(1.8rem,5vw,3.2rem); }
-body[data-mode="ipad"] #l-song-meta  { font-size:.82rem; }
+body[data-mode="ipad"] #l-song-title { font-size:clamp(2.2rem,5.5vw,3.8rem); }
+body[data-mode="ipad"] #l-song-meta  { font-size:.98rem; }
 
 /* Bottom stage controls */
 body[data-mode="ipad"] .l-ctrl {
-  min-height:52px; padding:12px 18px; font-size:.92rem; border-radius:12px;
+  min-height:60px; padding:14px 22px; font-size:1.05rem; border-radius:14px;
 }
 
 /* Signal bar */
 body[data-mode="ipad"] .sig-btn {
-  min-height:52px; padding:8px 14px; min-width:76px; border-radius:10px;
+  min-height:60px; padding:10px 16px; min-width:88px; border-radius:12px;
 }
-body[data-mode="ipad"] .sig-key   { font-size:.68rem; }
-body[data-mode="ipad"] .sig-label { font-size:.82rem; }
-body[data-mode="ipad"] .sig-edit-toggle { min-height:48px; padding:8px 14px; }
+body[data-mode="ipad"] .sig-key   { font-size:.78rem; }
+body[data-mode="ipad"] .sig-label { font-size:.95rem; }
+body[data-mode="ipad"] .sig-edit-toggle { min-height:56px; padding:10px 16px; }
 
-/* Library chips — bigger tap area */
-body[data-mode="ipad"] .lib-chip { padding:10px 12px; font-size:.85rem; min-height:40px; }
+/* Library chips */
+body[data-mode="ipad"] .lib-chip { padding:14px 16px; font-size:1rem; min-height:50px; }
 
 /* Form modal inputs */
 body[data-mode="ipad"] .form-group input,
 body[data-mode="ipad"] .form-group select,
 body[data-mode="ipad"] .form-group textarea {
-  min-height:48px; padding:12px 14px; font-size:1rem;
+  min-height:54px; padding:14px 16px; font-size:1.05rem;
 }
 
 /* Scrollable areas: touch momentum */
@@ -601,3 +600,12 @@ body[data-mode="ipad"] #l-font-slider::-webkit-slider-thumb,
 body[data-mode="ipad"] #m-font-slider::-webkit-slider-thumb { width:22px; height:22px; }
 
 
+
+/* ── Pedal flash feedback ─────────────────────────────────────── */
+@keyframes pedal-flash {
+  0%   { background: var(--amber); color: #000; border-color: var(--amber); }
+  100% { background: ''; color: ''; border-color: ''; }
+}
+.ctrl-bar-btn.pedal-flash {
+  animation: pedal-flash 0.3s ease-out;
+}
