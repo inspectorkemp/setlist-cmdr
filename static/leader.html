@@ -276,7 +276,7 @@ if ('serviceWorker' in navigator) {
           <option value="30">30s</option>
         </select>
         <button class="ctrl-bar-btn danger" id="rehear-end-btn" onclick="stopRehearsal()"
-                style="display:none;background:var(--purple);border-color:var(--purple);">◼ END REHEARSAL</button>
+                style="display:none;background:var(--purple);border-color:var(--purple);color:#fff;">◼ END REHEARSAL</button>
         <button class="ctrl-bar-btn danger" id="live-end-btn" onclick="endShow()">◼ END</button>
       </div>
 
@@ -311,7 +311,7 @@ if ('serviceWorker' in navigator) {
         <div style="flex:1;"></div>
         <div class="font-size-ctrl">
           <span class="font-size-lbl">A</span>
-          <input type="range" id="l-font-slider" min="70" max="160" value="100" step="5"
+          <input type="range" id="l-font-slider" min="70" max="250" value="100" step="10"
                  oninput="lSetFontSize(this.value)" title="Lyrics font size">
           <span class="font-size-lbl" style="font-size:1.1em;">A</span>
         </div>
@@ -366,7 +366,9 @@ if ('serviceWorker' in navigator) {
            letter-spacing:2px;color:var(--amber);flex:1;">SETTINGS</div>
       <button class="btn" onclick="closeSettingsModal()">✕</button>
     </div>
-    <div style="padding:20px;">
+    <div style="padding:20px;overflow-y:auto;max-height:80vh;">
+
+      <!-- PIN -->
       <label style="display:block;font-size:.72rem;color:var(--dim);
              text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
         Change Leader PIN
@@ -382,6 +384,84 @@ if ('serviceWorker' in navigator) {
       <div id="pin-change-msg" style="font-size:.78rem;color:var(--green);display:none;">
         PIN updated. You will be logged out.
       </div>
+
+      <!-- Pedal -->
+      <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+        <label style="display:block;font-size:.72rem;color:var(--dim);
+               text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+          Bluetooth Page Turner Pedal
+        </label>
+        <p style="font-size:.78rem;color:var(--dim);line-height:1.6;margin-bottom:14px;">
+          Pair your pedal with this device via Bluetooth, then assign its keys below.
+          Most pedals send Arrow keys by default. Click a field and press the pedal button to capture it.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              NEXT SONG key
+            </label>
+            <input id="pedal-next-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('next')"
+                   onblur="stopPedalCapture()">
+          </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              PREV SONG key
+            </label>
+            <input id="pedal-prev-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('prev')"
+                   onblur="stopPedalCapture()">
+          </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              SCROLL DOWN key
+            </label>
+            <input id="pedal-scrolldown-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('scrolldown')"
+                   onblur="stopPedalCapture()">
+          </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              SCROLL UP key
+            </label>
+            <input id="pedal-scrollup-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('scrollup')"
+                   onblur="stopPedalCapture()">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" style="font-size:.78rem;padding:5px 12px;"
+                  onclick="setPedalPreset('arrows')">◄► Arrows</button>
+          <button class="btn" style="font-size:.78rem;padding:5px 12px;"
+                  onclick="setPedalPreset('pageupdown')">PgUp/PgDn</button>
+          <button class="btn" style="font-size:.78rem;padding:5px 12px;"
+                  onclick="setPedalPreset('brackets')">[  ]  Brackets</button>
+          <button class="btn danger" style="font-size:.78rem;padding:5px 12px;margin-left:auto;"
+                  onclick="resetPedal()">Reset</button>
+        </div>
+        <div id="pedal-capture-hint" style="font-size:.75rem;color:var(--amber);
+             margin-top:8px;display:none;">
+          Listening… press the pedal button now
+        </div>
+      </div>
+
+      <!-- Lock -->
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn danger" onclick="logout()" style="width:100%;">
           ◼ LOCK / LOG OUT
@@ -1327,18 +1407,71 @@ async function sendSignal(idx) {
 }
 
 document.addEventListener('keydown', e => {
+  // Pedal key capture (when settings modal is open and a field is focused)
+  if (_pedalCapturing && _capturePedalKey(e)) return;
+
   // Escape closes the chord editor if open
   if (e.key === 'Escape') {
     const ce = document.getElementById('chord-editor-overlay');
     if (ce && ce.style.display === 'flex') { closeChordEditor(); return; }
   }
-  if (!liveState.is_live) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  // ── Page turner pedal navigation ─────────────────────────────
+  // Handles common Bluetooth pedal key codes (AirTurn, PageFlip, iRig, etc.)
+  // Only active when live. Configurable via pedal settings.
+  if (liveState.is_live) {
+    const nextKey       = localStorage.getItem('cmdr_pedal_next')       || 'ArrowRight';
+    const prevKey       = localStorage.getItem('cmdr_pedal_prev')       || 'ArrowLeft';
+    const scrollDownKey = localStorage.getItem('cmdr_pedal_scrolldown') || '';
+    const scrollUpKey   = localStorage.getItem('cmdr_pedal_scrollup')   || '';
+
+    if (e.key === nextKey) {
+      e.preventDefault();
+      navSong(+1);
+      _pedalFlash('next');
+      return;
+    }
+    if (e.key === prevKey) {
+      e.preventDefault();
+      navSong(-1);
+      _pedalFlash('prev');
+      return;
+    }
+    if (scrollDownKey && e.key === scrollDownKey) {
+      e.preventDefault();
+      _pedalScroll('down');
+      return;
+    }
+    if (scrollUpKey && e.key === scrollUpKey) {
+      e.preventDefault();
+      _pedalScroll('up');
+      return;
+    }
+  }
+
+  // ── Signal hotkeys (F1–F8) ────────────────────────────────────
+  if (!liveState.is_live) return;
   const idx = ['F1','F2','F3','F4','F5','F6','F7','F8'].indexOf(e.key);
   if (idx === -1) return;
   e.preventDefault();
   sendSignal(idx);
 });
+
+function _pedalFlash(dir) {
+  const btn = document.getElementById(dir === 'next' ? 'l-next-btn' : 'l-prev-btn');
+  if (!btn) return;
+  btn.classList.add('pedal-flash');
+  setTimeout(() => btn.classList.remove('pedal-flash'), 300);
+}
+
+function _pedalScroll(dir) {
+  const wrap = document.getElementById('l-content-wrap');
+  if (!wrap) return;
+  // Scroll 80% of the visible height — enough to advance clearly without losing context
+  const amount = Math.floor(wrap.clientHeight * 0.8);
+  wrap.scrollBy({ top: dir === 'down' ? amount : -amount, behavior: 'smooth' });
+}
 
 // ── Rehearsal ────────────────────────────────────────────────
 let rehearActive = false;
@@ -1490,6 +1623,22 @@ async function renderStageCard() {
     lStopScroll();
   }
   lRenderSong();
+  // Broadcast current transpose (may be 0 after song change)
+  if (leaderWs && leaderWs.readyState === 1) {
+    leaderWs.send(JSON.stringify({ type: 'transpose_update', xp: lXp }));
+  }
+
+  // Reset scroll and broadcast to monitor
+  const _wrap = document.getElementById('l-content-wrap');
+  if (_wrap) {
+    _wrap.scrollTop = 0;
+    _broadcastScroll();
+    // Attach scroll listener once
+    if (!_wrap._scrollListenerAttached) {
+      _wrap.addEventListener('scroll', _scheduleScrollSync, { passive: true });
+      _wrap._scrollListenerAttached = true;
+    }
+  }
 }
 
 // ── Leader song rendering ─────────────────────────────────────
@@ -1554,6 +1703,10 @@ function lSetFontSize(pct) {
 function lUpdXp() {
   document.getElementById('l-xp-display').textContent = (lXp >= 0 ? '+' : '') + lXp;
   lRenderSong();
+  // Broadcast to monitor
+  if (leaderWs && leaderWs.readyState === 1) {
+    leaderWs.send(JSON.stringify({ type: 'transpose_update', xp: lXp }));
+  }
 }
 
 function lToggleScroll() { lScrolling ? lStopScroll() : lStartScroll(); }
@@ -1564,6 +1717,7 @@ function lStartScroll() {
   lScrollTick = setInterval(() => {
     wrap.scrollTop += 0.6;
     if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight) lStopScroll();
+    _scheduleScrollSync();
   }, 16);
 }
 function lStopScroll() {
@@ -1571,6 +1725,22 @@ function lStopScroll() {
   const btn = document.getElementById('l-btn-scroll');
   if (btn) btn.classList.remove('active');
   clearInterval(lScrollTick);
+}
+
+// ── Scroll sync to monitor ────────────────────────────────────
+let _scrollSyncTimer = null;
+function _broadcastScroll() {
+  const wrap = document.getElementById('l-content-wrap');
+  if (!wrap || !leaderWs || leaderWs.readyState !== 1) return;
+  const max = wrap.scrollHeight - wrap.clientHeight;
+  if (max <= 0) return;
+  const pct = wrap.scrollTop / max;
+  leaderWs.send(JSON.stringify({ type: 'scroll_update', pct }));
+}
+function _scheduleScrollSync() {
+  // Throttle to once per 80ms so we don't flood the server during fast scrolls
+  clearTimeout(_scrollSyncTimer);
+  _scrollSyncTimer = setTimeout(_broadcastScroll, 80);
 }
 
 // ── Database backup / restore ────────────────────────────────
@@ -1669,9 +1839,10 @@ let leaderWs = null;
   ws.onerror = () => ws.close();
   ws.onopen  = () => {
     ws.send('name:');
-    // Start clock sync immediately on connect
     syncSamples = [];
     syncClock();
+    // Send scroll position so any connected monitor syncs immediately
+    setTimeout(_broadcastScroll, 500);
   };
 })();
 
@@ -1717,6 +1888,9 @@ function serverNow() { return Date.now() + clockOffset; }
 
 // Re-sync every 30 seconds
 setInterval(() => { syncSamples = []; syncClock(); }, 30000);
+
+// Scroll position heartbeat — keeps monitor in sync even when leader isn't scrolling
+setInterval(_broadcastScroll, 2000);
 
 // ── Metronome (Web Audio lookahead scheduler) ────────────────
 // Uses AudioContext.currentTime for sub-millisecond precision scheduling
@@ -2015,6 +2189,95 @@ function openSettingsModal() {
   document.getElementById('settings-overlay').style.display = 'flex';
   document.getElementById('new-pin-input').value = '';
   document.getElementById('pin-change-msg').style.display = 'none';
+  // Populate pedal key fields from saved settings
+  document.getElementById('pedal-next-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_next') || 'ArrowRight');
+  document.getElementById('pedal-prev-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_prev') || 'ArrowLeft');
+  document.getElementById('pedal-scrolldown-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_scrolldown') || '');
+  document.getElementById('pedal-scrollup-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_scrollup') || '');
+}
+
+// ── Pedal key capture ─────────────────────────────────────────
+let _pedalCapturing = null;
+
+function _keyLabel(key) {
+  const labels = {
+    ArrowRight: '► Right Arrow', ArrowLeft: '◄ Left Arrow',
+    ArrowUp: '▲ Up Arrow',       ArrowDown: '▼ Down Arrow',
+    PageUp: 'Page Up',           PageDown: 'Page Down',
+    ' ': 'Space',                'Enter': 'Enter',
+  };
+  return labels[key] || key;
+}
+
+function startPedalCapture(which) {
+  _pedalCapturing = which;
+  document.getElementById('pedal-capture-hint').style.display = 'block';
+  const inputId = which === 'next' ? 'pedal-next-input' : 'pedal-prev-input';
+  document.getElementById(inputId).value = '';
+  document.getElementById(inputId).placeholder = 'Press pedal now…';
+}
+
+function stopPedalCapture() {
+  setTimeout(() => {
+    _pedalCapturing = null;
+    document.getElementById('pedal-capture-hint').style.display = 'none';
+    // Restore placeholder
+    document.getElementById('pedal-next-input').placeholder = 'Click then press pedal…';
+    document.getElementById('pedal-prev-input').placeholder = 'Click then press pedal…';
+  }, 200);
+}
+
+function _capturePedalKey(e) {
+  if (!_pedalCapturing) return false;
+  // Ignore pure modifier keys
+  if (['Shift','Control','Alt','Meta','CapsLock'].includes(e.key)) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  const which = _pedalCapturing;
+  const key   = e.key;
+  const storageKey = {
+    next: 'cmdr_pedal_next', prev: 'cmdr_pedal_prev',
+    scrolldown: 'cmdr_pedal_scrolldown', scrollup: 'cmdr_pedal_scrollup'
+  }[which];
+  const inputId = `pedal-${which}-input`;
+  if (storageKey) localStorage.setItem(storageKey, key);
+  document.getElementById(inputId).value = _keyLabel(key);
+  document.getElementById(inputId).blur();
+  return true;
+}
+
+function setPedalPreset(preset) {
+  // next/prev are song navigation; scrolldown/scrollup are content scroll (optional)
+  const presets = {
+    arrows:     { next: 'ArrowRight', prev: 'ArrowLeft',  scrolldown: '',         scrollup: ''        },
+    pageupdown: { next: 'PageDown',   prev: 'PageUp',     scrolldown: '',         scrollup: ''        },
+    brackets:   { next: ']',          prev: '[',           scrolldown: '',         scrollup: ''        },
+  };
+  const p = presets[preset];
+  if (!p) return;
+  localStorage.setItem('cmdr_pedal_next',       p.next);
+  localStorage.setItem('cmdr_pedal_prev',       p.prev);
+  localStorage.setItem('cmdr_pedal_scrolldown', p.scrolldown);
+  localStorage.setItem('cmdr_pedal_scrollup',   p.scrollup);
+  document.getElementById('pedal-next-input').value       = _keyLabel(p.next);
+  document.getElementById('pedal-prev-input').value       = _keyLabel(p.prev);
+  document.getElementById('pedal-scrolldown-input').value = _keyLabel(p.scrolldown);
+  document.getElementById('pedal-scrollup-input').value   = _keyLabel(p.scrollup);
+}
+
+function resetPedal() {
+  localStorage.removeItem('cmdr_pedal_next');
+  localStorage.removeItem('cmdr_pedal_prev');
+  localStorage.removeItem('cmdr_pedal_scrolldown');
+  localStorage.removeItem('cmdr_pedal_scrollup');
+  document.getElementById('pedal-next-input').value       = _keyLabel('ArrowRight');
+  document.getElementById('pedal-prev-input').value       = _keyLabel('ArrowLeft');
+  document.getElementById('pedal-scrolldown-input').value = '';
+  document.getElementById('pedal-scrollup-input').value   = '';
 }
 
 function closeSettingsModal(e) {
