@@ -278,8 +278,88 @@ async def require_auth(creds: HTTPAuthorizationCredentials = Depends(_bearer)):
 # ──────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Setlist CMDR")
+
+def _seed_demo_data():
+    """Populate demo songs and a sample setlist on a brand-new empty database.
+    Skips silently if any songs already exist."""
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
+    if count > 0:
+        conn.close()
+        return
+
+    songs = [
+        {
+            "title":    "Come Together",
+            "artist":   "The Beatles",
+            "song_key": "Dm",
+            "tempo":    82,
+            "duration": 259,
+            "status":   "active",
+            "lyrics":   "Here come old flat top\nHe come grooving up slowly\nHe got joo joo eyeball\nHe one holy roller\nHe got hair down to his knee\nGot to be a joker he just do what he please\n\nHe wear no shoeshine\nHe got toe jam football\nHe got monkey finger\nHe shoot Coca Cola\nHe say I know you, you know me\nOne thing I can tell you is you got to be free\nCome together, right now\nOver me",
+            "chords":   "[Dm]Here come old flat top\nHe come grooving up [A]slowly\nHe got [Dm]joo joo eyeball\nHe [A]one holy roller\nHe got [Dm]hair down to his knee\nGot to be a joker he just [A]do what he please\n\n[Dm]He wear no shoeshine\nHe got [A]toe jam football\nHe got [Dm]monkey finger\nHe [A]shoot Coca Cola\nHe say [Dm]I know you, you know me\nOne thing I can tell you is you got to be [A]free\n[D]Come together, [A]right now\n[Dm]Over me",
+            "notes":    "Key riff on bass. Slow groove, keep it loose.",
+        },
+        {
+            "title":    "Wonderwall",
+            "artist":   "Oasis",
+            "song_key": "F#m",
+            "tempo":    87,
+            "duration": 258,
+            "status":   "active",
+            "lyrics":   "Today is gonna be the day\nThat they're gonna throw it back to you\nBy now you should've somehow\nRealized what you gotta do\nI don't believe that anybody\nFeels the way I do about you now\n\nAnd after all, you're my wonderwall",
+            "chords":   "[Em7]Today is gonna be the day\nThat they're gonna throw it [G]back to you\n[Dsus4]By now you should've somehow\n[A7sus4]Realized what you gotta do\n[Em7]I don't believe that anybody\n[G]Feels the way I [Dsus4]do about [A7sus4]you now\n\nBecause [Em7]maybe, [G]you're gonna be the one that [Dsus4]saves me\n[A7sus4]And after all, [Em7]you're my [G]wonderwall [Dsus4][A7sus4]",
+            "notes":    "Capo 2. Em7=022033, G=320033, Dsus4=xx0233, A7sus4=x02030.",
+        },
+        {
+            "title":    "Hotel California",
+            "artist":   "Eagles",
+            "song_key": "Bm",
+            "tempo":    75,
+            "duration": 391,
+            "status":   "active",
+            "lyrics":   "On a dark desert highway\nCool wind in my hair\nWarm smell of colitas\nRising up through the air\n\nWelcome to the Hotel California\nSuch a lovely place, such a lovely face\nPlenty of room at the Hotel California\nAny time of year, you can find it here",
+            "chords":   "[Bm]On a dark desert [F#]highway\n[A]Cool wind in my [E]hair\n[G]Warm smell of [D]colitas\n[Em]Rising up through the [F#]air\n\n[G]Welcome to the Hotel [D]California\n[F#]Such a lovely place, such a [Bm]lovely face\n[G]Plenty of room at the Hotel [D]California\n[Em]Any time of year, [F#]you can find it here",
+            "notes":    "Iconic 12-string guitar intro. Long outro solo.",
+        },
+        {
+            "title":    "Sweet Home Chicago",
+            "artist":   "Robert Johnson",
+            "song_key": "E",
+            "tempo":    120,
+            "duration": 185,
+            "status":   "active",
+            "lyrics":   "Oh baby, don't you want to go\nBack to the land of California\nTo my sweet home Chicago\n\nNow one and one is two\nTwo and two is four\nCome on baby don't you want to go\nBack to my sweet home Chicago",
+            "chords":   "[E7]Oh baby, don't you want to go\n[A7]Back to the land of California\n[E7]To my sweet home [B7]Chicago\n\n[E7]Now one and one is two\n[A7]Two and two is four\n[A7]Come on baby don't you want to go\n[B7]To my sweet home [E7]Chicago",
+            "notes":    "12-bar blues in E. Standard shuffle feel.",
+        },
+    ]
+
+    song_ids = []
+    for s in songs:
+        cur = conn.execute(
+            """INSERT INTO songs (title, artist, song_key, tempo, duration,
+               status, lyrics, chords, notes) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (s["title"], s["artist"], s["song_key"], s["tempo"], s["duration"],
+             s["status"], s["lyrics"], s["chords"], s["notes"])
+        )
+        song_ids.append(cur.lastrowid)
+
+    cur = conn.execute(
+        "INSERT INTO setlists (name, description, active, position) VALUES (?,?,1,0)",
+        ("Sample Set", "Demo setlist")
+    )
+    sl_id = cur.lastrowid
+    for pos, sid in enumerate(song_ids[:2]):
+        conn.execute(
+            "INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES (?,?,?)",
+            (sl_id, sid, pos)
+        )
+    conn.commit()
+    conn.close()
 init_db()
 _validate_live_state()
+_seed_demo_data()
 os.makedirs("static", exist_ok=True)
 
 # ── Pydantic models ───────────────────────────────────────────
@@ -728,6 +808,17 @@ async def ws_endpoint(websocket: WebSocket):
                         metro_state["on"] = False
                         metro_state["server_epoch"] = None
                         await manager.broadcast({"type": "metronome_stop"})
+                    elif msg.get("type") == "scroll_update":
+                        # Leader scroll position — forward to all monitors
+                        await manager.broadcast({
+                            "type": "scroll_update",
+                            "pct":  msg.get("pct", 0),
+                        })
+                    elif msg.get("type") == "transpose_update":
+                        await manager.broadcast({
+                            "type": "transpose_update",
+                            "xp":   msg.get("xp", 0),
+                        })
                 except Exception:
                     pass
             elif data.startswith("name:"):
@@ -766,6 +857,12 @@ def _inject_build(html: str) -> str:
     meta = f'<meta charset="UTF-8">\n<meta name="build-id" content="{BUILD_ID}">'
     html = html.replace('<meta charset="UTF-8">', meta)
     return html
+
+@app.get("/monitor")
+def monitor():
+    r = FileResponse("static/monitor.html")
+    r.headers["Cache-Control"] = "no-store"
+    return r
 
 @app.get("/")
 def root():
