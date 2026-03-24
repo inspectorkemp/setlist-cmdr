@@ -6,11 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Setlist CMDR — Stage</title>
-<link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="/static/manifest-musician.json">
 <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
 <meta name="theme-color" content="#08080f">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Fonts served locally if setup-fonts.sh has been run, otherwise via Google -->
+<link rel="stylesheet" href="/fonts.css">
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -21,6 +21,7 @@ if ('serviceWorker' in navigator) {
 </script>
 <style>
 :root {
+  --purple: #0ea5e9;
   --bg:        #08080f;
   --surface:   #111118;
   --border:    #1c1c26;
@@ -57,6 +58,13 @@ html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--
   letter-spacing:3px; padding:14px 56px; transition:opacity .15s;
 }
 .join-btn:active { opacity:.75; }
+.member-btn {
+  background:var(--surface); border:2px solid var(--border); border-radius:12px;
+  color:var(--text); cursor:pointer; font-family:'Bebas Neue',sans-serif;
+  font-size:1.2rem; letter-spacing:2px; padding:12px 20px;
+  transition:border-color .15s, background .15s; min-width:100px;
+}
+.member-btn:hover, .member-btn:active { border-color:var(--amber); background:var(--amber-glow); }
 
 /* ── Main app ─────────────────────────────────────────────── */
 #app { display:none; flex-direction:column; height:100%; }
@@ -239,6 +247,38 @@ html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--
   #controls { padding:5px 10px; gap:6px; }
   .ctrl { padding:7px 12px; font-size:.76rem; }
 }
+/* ── SW update notification banner ── */
+
+/* ── SW update notification banner ──────────────────────────── */
+#sw-update-banner {
+  display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
+  background:var(--amber); color:#000;
+  font-family:'DM Sans',sans-serif; font-size:.9rem; font-weight:700;
+  padding:12px 20px; text-align:center;
+  box-shadow:0 -4px 20px rgba(0,0,0,.4);
+}
+#sw-update-banner button {
+  background:#000; color:var(--amber); border:none; border-radius:6px;
+  padding:6px 16px; margin-left:14px; font-weight:700; cursor:pointer;
+  font-family:inherit; font-size:.85rem;
+}
+
+/* ── Font size slider ────────────────────────────────────── */
+.font-size-ctrl { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.font-size-lbl { font-family:'DM Mono',monospace; color:var(--dim); font-size:.75rem; line-height:1; user-select:none; }
+#m-font-slider { -webkit-appearance:none; appearance:none; width:80px; height:4px; border-radius:2px; background:var(--border); outline:none; cursor:pointer; }
+#m-font-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:var(--amber); cursor:pointer; }
+#m-font-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:var(--amber); cursor:pointer; border:none; }
+
+/* ── Rehearsal banner ────────────────────────────────────── */
+#rehear-banner {
+  display:none; position:fixed; top:0; left:0; right:0; z-index:700;
+  background:var(--purple); color:#fff;
+  font-family:'Bebas Neue',sans-serif; font-size:clamp(.85rem,2.5vw,1.1rem);
+  letter-spacing:2px; text-align:center; padding:5px 12px;
+  pointer-events:none;
+}
+
 /* ── Signal overlay ──────────────────────────────────────── */
 #signal-overlay {
   position:fixed; top:0; left:0; right:0; z-index:800;
@@ -260,15 +300,24 @@ html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--
 </style>
 </head>
 <body>
+<div id="sw-update-banner">
+  New version available. Reload now to get the update.
+  <button onclick="location.reload()">RELOAD NOW</button>
+</div>
 
 <!-- ── Name screen ─────────────────────────────────────────── -->
 <div id="name-screen">
   <img src="/static/img/logo_large.png" alt="Setlist CMDR"
        style="width:clamp(180px,50vw,320px);height:auto;margin-bottom:8px;">
-  <p>Enter your name to join the stage</p>
-  <input id="name-input" type="text" placeholder="Your name…" autocomplete="off" autocorrect="off" autocapitalize="words">
+  <p>Select your name or type it below</p>
+  <div id="member-btns" style="display:flex;flex-wrap:wrap;gap:10px;
+       justify-content:center;max-width:480px;margin-bottom:8px;"></div>
+  <input id="name-input" type="text" placeholder="Or type your name…" autocomplete="off" autocorrect="off" autocapitalize="words">
   <button class="join-btn" onclick="joinStage()">JOIN</button>
 </div>
+
+<!-- ── Rehearsal banner ────────────────────────────────────── -->
+<div id="rehear-banner">◈ REHEARSAL MODE</div>
 
 <!-- ── Signal overlay ──────────────────────────────────────── -->
 <div id="signal-overlay">
@@ -312,6 +361,12 @@ html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--
   <div id="controls">
     <button class="ctrl active" id="btn-mode"   onclick="toggleMode()">LYRICS</button>
     <button class="ctrl"        id="btn-scroll" onclick="toggleScroll()">» AUTO</button>
+    <div class="font-size-ctrl">
+      <span class="font-size-lbl">A</span>
+      <input type="range" id="m-font-slider" min="70" max="250" value="100" step="10"
+             oninput="setFontSize(this.value)" title="Lyrics font size">
+      <span class="font-size-lbl" style="font-size:1.1em;">A</span>
+    </div>
     <button class="ctrl"        id="btn-metro"  onclick="toggleMetro()">
       ◉ FLASH<span class="bpm-sub" id="metro-bpm-sub"></span>
     </button>
@@ -363,6 +418,9 @@ let scrollTick = null;
 let scrolling  = false;
 
 // ── Boot ──────────────────────────────────────────────────────
+// Load band member buttons immediately
+loadMemberButtons();
+
 if (name) {
   document.getElementById('name-input').value = name;
   boot();
@@ -379,28 +437,68 @@ function joinStage() {
   boot();
 }
 
+async function loadMemberButtons() {
+  try {
+    const members = await fetch('/api/band_members').then(r => r.json());
+    const container = document.getElementById('member-btns');
+    if (!members.length) {
+      container.style.display = 'none';
+      document.querySelector('#name-screen p').textContent = 'Enter your name to join the stage';
+      return;
+    }
+    container.innerHTML = members.map(m =>
+      `<button class="member-btn" onclick="selectMember(this)" data-name="${m.name.replace(/"/g,'&quot;')}">${m.name}</button>`
+    ).join('');
+    container.style.display = 'flex';
+  } catch { /* silent — members list is best-effort */ }
+}
+
+function selectMember(btn) {
+  document.getElementById('name-input').value = btn.dataset.name;
+  joinStage();
+}
+
 function boot() {
   document.getElementById('name-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   applyMode();
   connect();
   fallbackPoll();
+  // Check if a rehearsal is already active (e.g. joined after leader clicked Rehearse)
+  fetch('/api/rehearsal').then(r => r.json()).then(state => {
+    if (state.active && state.song) applyRehearsal(state.song);
+  }).catch(() => {});
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws`);
+  musicianWs = ws;
   ws.onopen  = () => {
     setDot('on');
     if (name) ws.send(`name:${name}`);
+    // Start clock sync immediately on connect
+    syncSamples = [];
+    syncClock();
   };
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
-    if (msg.type === 'live_update')  applyLive(msg);
-    if (msg.type === 'signal')         showSignal(msg.text);
+    if (msg.type === 'live_update')     applyLive(msg);
+    if (msg.type === 'signal')          showSignal(msg.text);
+    if (msg.type === 'sync_reply')      handleSyncReply(msg);
+    if (msg.type === 'rehearsal_update') applyRehearsal(msg.song);
+    if (msg.type === 'rehearsal_stop')   clearRehearsal();
+    if (msg.type === 'metronome_start') {
+      stopMetro();
+      startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
+      const secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
+      clearTimeout(metroTimeout);
+      metroTimeout = setTimeout(stopMetro, secs * 1000);
+    }
+    if (msg.type === 'metronome_stop')  stopMetro();
   };
-  ws.onclose = () => { setDot('off'); setTimeout(connect, 3000); };
+  ws.onclose = () => { setDot('off'); musicianWs = null; setTimeout(connect, 3000); };
   ws.onerror = () => ws.close();
 }
 
@@ -423,14 +521,30 @@ async function fallbackPoll() {
 
 // ── Live state handler ────────────────────────────────────────
 async function applyLive(state) {
-  if (!state.is_live || !state.setlist_id) {
-    document.getElementById('sl-name').textContent = 'Waiting for band leader…';
-    document.getElementById('song-bar').style.display = 'none';
-    document.getElementById('next-bar').style.display = 'none';
-    document.getElementById('waiting').style.display = 'flex';
-    document.getElementById('song-content').style.display = 'none';
+  if (!state.is_live) {
+    // Only reset to standby if not in rehearsal
+    if (!rehearsalSong) {
+      document.getElementById('sl-name').textContent = 'Waiting for band leader…';
+      document.getElementById('song-bar').style.display = 'none';
+      document.getElementById('next-bar').style.display = 'none';
+      document.getElementById('waiting').style.display = 'flex';
+      document.getElementById('song-content').style.display = 'none';
+      document.getElementById('rehear-banner').style.display = 'none';
+      rehearsalSong = null;
+    }
     return;
   }
+
+  // Rehearsal deploy: song embedded directly in state, no setlist
+  if (state.is_live && state.song && !state.setlist_id) {
+    rehearsalSong = state.song;
+    applyRehearsal(state.song);
+    return;
+  }
+
+  // Normal live show with a setlist
+  rehearsalSong = null;
+  document.getElementById('rehear-banner').style.display = 'none';
 
   // Refresh setlist song list when setlist changes
   if (state.setlist_id !== slId) {
@@ -535,11 +649,63 @@ function stopScroll() {
   clearInterval(scrollTick);
 }
 
-// ── Metronome (local only, auto-timeout) ──────────────────────
-let metroOn    = false;
-let metroTimer = null;
-let metroBeat  = 0;
+// ── Clock sync (NTP-style over WebSocket) ─────────────────────
+let clockOffset  = 0;
+let syncSamples  = [];
+let musicianWs   = null;  // set by connect()
+
+function syncClock() {
+  if (!musicianWs || musicianWs.readyState !== 1) return;
+  const t0 = Date.now();
+  musicianWs.send(JSON.stringify({ type: 'sync', t0 }));
+}
+
+function handleSyncReply(msg) {
+  const t1     = Date.now();
+  const rtt    = t1 - msg.t0;
+  const offset = msg.server - (msg.t0 + rtt / 2);
+  syncSamples.push({ rtt, offset });
+  if (syncSamples.length < 16) {
+    setTimeout(syncClock, 40);
+  } else {
+    // Discard the 8 worst RTT samples, average the best 8
+    syncSamples.sort((a, b) => a.rtt - b.rtt);
+    const good = syncSamples.slice(0, 8);
+    const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
+    // Smooth large jumps — never move the offset by more than 20ms at once
+    // to avoid sudden phase jumps mid-performance
+    const delta = newOffset - clockOffset;
+    clockOffset = clockOffset + Math.max(-20, Math.min(20, delta));
+    syncSamples = [];
+  }
+}
+
+function serverNow() { return Date.now() + clockOffset; }
+
+// Re-sync every 30 seconds (was 45)
+setInterval(() => { syncSamples = []; syncClock(); }, 30000);
+
+// ── Metronome (Web Audio lookahead scheduler) ──────────────────
+let metroOn      = false;
 let metroTimeout = null;
+let metroBpm     = 0;
+let metroEpoch   = 0;   // server_epoch converted to local ms time
+let metroBar     = 4;
+let _metroAc     = null;
+let _metroSchedTimer    = null;
+let _lastScheduledBeat  = -1;
+let _audioEpoch         = 0;
+
+const LOOKAHEAD_MS  = 100;
+const SCHEDULE_INT  = 25;
+
+function _getOrCreateAudio() {
+  if (!_metroAc) {
+    try { _metroAc = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (_metroAc && _metroAc.state === 'suspended') _metroAc.resume();
+  return _metroAc;
+}
 
 function toggleMetro() {
   metroOn ? stopMetro() : startMetro();
@@ -554,39 +720,82 @@ function startMetro() {
     document.getElementById('metro-bpm-sub').textContent = 'no BPM';
     return;
   }
-  metroOn   = true;
-  metroBeat = 0;
-  btn.classList.add('active');
-  document.getElementById('metro-bpm-sub').textContent = `${bpm} bpm`;
-  tick(bpm);
-
-  // Auto-stop after selected timeout
+  startMetroFromEpoch(bpm, 4, serverNow());
   const secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
   clearTimeout(metroTimeout);
   metroTimeout = setTimeout(stopMetro, secs * 1000);
 }
 
-function tick(bpm) {
+function startMetroFromEpoch(bpm, beatsPerBar, serverEpoch) {
+  if (metroOn) _stopMetroEngine();
+  metroBpm   = bpm;
+  metroBar   = beatsPerBar || 4;
+  metroEpoch = serverEpoch - clockOffset;
+  metroOn    = true;
+  document.getElementById('btn-metro').classList.add('active');
+  document.getElementById('metro-bpm-sub').textContent = `${bpm} bpm`;
+
+  const ac = _getOrCreateAudio();
+  if (ac) {
+    _audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000;
+  }
+  _lastScheduledBeat = -1;
+  clearInterval(_metroSchedTimer);
+  _metroSchedTimer = setInterval(_metroScheduler, SCHEDULE_INT);
+  _metroScheduler();
+}
+
+function _metroScheduler() {
   if (!metroOn) return;
-  fireFlash();
-  metroBeat = (metroBeat + 1) % 4;
-  metroTimer = setTimeout(() => tick(bpm), 60000 / bpm);
+  const ac = _metroAc;
+  if (!ac) { _metroSchedulerFallback(); return; }
+
+  const beatSec  = 60 / metroBpm;
+  const nowAudio = ac.currentTime;
+  const horizon  = nowAudio + LOOKAHEAD_MS / 1000;
+  let beat = Math.max(0, Math.floor((nowAudio - _audioEpoch) / beatSec));
+
+  while (true) {
+    const beatTime = _audioEpoch + beat * beatSec;
+    if (beatTime > horizon) break;
+    if (beat > _lastScheduledBeat) {
+      _lastScheduledBeat = beat;
+      const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
+      const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
+      setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown); }, delayMs);
+    }
+    beat++;
+  }
+}
+
+function _metroSchedulerFallback() {
+  const beatMs  = 60000 / metroBpm;
+  const elapsed = Date.now() - metroEpoch;
+  const beat    = Math.max(0, Math.floor(elapsed / beatMs));
+  if (beat > _lastScheduledBeat) {
+    _lastScheduledBeat = beat;
+    fireFlash(metroBpm, (beat % metroBar + metroBar) % metroBar === 0);
+  }
+}
+
+function _stopMetroEngine() {
+  clearInterval(_metroSchedTimer);
+  _metroSchedTimer   = null;
+  _lastScheduledBeat = -1;
 }
 
 function stopMetro() {
   metroOn = false;
-  clearTimeout(metroTimer);
   clearTimeout(metroTimeout);
+  _stopMetroEngine();
   document.getElementById('metro-flash').classList.remove('beat');
   document.getElementById('btn-metro').classList.remove('active');
   document.getElementById('metro-bpm-sub').textContent = '';
 }
 
-function fireFlash() {
+function fireFlash(bpm, isDown) {
   const flash  = document.getElementById('metro-flash');
-  const isDown = metroBeat === 0;
-  const bpm    = song?.tempo || 120;
-  const beatMs = 60000 / bpm;
+  const beatMs = 60000 / (bpm || 120);
   flash.style.background = isDown
     ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
     : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
@@ -601,6 +810,60 @@ function restartMetroIfOn() {
   startMetro();
 }
 
+// ── Rehearsal ────────────────────────────────────────────────
+let rehearsalSong = null;
+
+function applyRehearsal(s) {
+  rehearsalSong = s;
+  song = s;  // reuse the same song object so controls (transpose, metro) work
+  xp   = 0;
+  document.getElementById('xp-display').textContent = '+0';
+  stopScroll();
+  restartMetroIfOn();
+
+  // Show banner and song content; hide standby if not live
+  document.getElementById('rehear-banner').style.display = 'block';
+  document.getElementById('song-title').textContent = s.title;
+  const meta = [];
+  if (s.artist)   meta.push(`<b>${s.artist}</b>`);
+  if (s.song_key) meta.push(`Key: <b>${s.song_key}</b>`);
+  if (s.tempo)    meta.push(`♩ <b>${s.tempo} BPM</b>`);
+  document.getElementById('song-meta').innerHTML = meta.join(' · ');
+  document.getElementById('song-bar').style.display = 'block';
+  document.getElementById('next-bar').style.display = 'none';
+  document.getElementById('waiting').style.display = 'none';
+  document.getElementById('song-content').style.display = 'block';
+  document.getElementById('sl-name').textContent = 'REHEARSAL';
+  document.getElementById('pos-badge').textContent = '';
+  renderSong();
+}
+
+function clearRehearsal() {
+  rehearsalSong = null;
+  song          = null;
+  document.getElementById('rehear-banner').style.display  = 'none';
+  document.getElementById('sl-name').textContent          = 'Waiting for band leader…';
+  document.getElementById('song-bar').style.display       = 'none';
+  document.getElementById('next-bar').style.display       = 'none';
+  document.getElementById('waiting').style.display        = 'flex';
+  document.getElementById('song-content').style.display   = 'none';
+  // Let the next WS live_update or fallback poll restore the live state if needed
+}
+
+// ── Font size ─────────────────────────────────────────────────
+function setFontSize(pct) {
+  const el = document.getElementById('song-content');
+  if (el) el.style.fontSize = (parseFloat(pct) / 100) + 'em';
+  localStorage.setItem('m_font_pct', pct);
+}
+(function initMFont() {
+  const saved = localStorage.getItem('m_font_pct');
+  if (saved) {
+    const slider = document.getElementById('m-font-slider');
+    if (slider) { slider.value = saved; setFontSize(saved); }
+  }
+})();
+
 // ── Signal overlay ────────────────────────────────────────────
 let signalTimer = null;
 function showSignal(text) {
@@ -610,6 +873,16 @@ function showSignal(text) {
   overlay.classList.add('show');
   if (signalTimer) clearTimeout(signalTimer);
   signalTimer = setTimeout(() => overlay.classList.remove('show'), 3000);
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data && e.data.type === 'sw_updated') {
+      document.getElementById('sw-update-banner').style.display = 'block';
+    }
+  });
 }
 </script>
 </body>
