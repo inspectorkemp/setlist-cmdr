@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Setlist CMDR — Monitor</title>
+<meta name="theme-color" content="#08080f">
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root {
+  --bg:     #08080f;
+  --surface:#111118;
+  --border: #1c1c26;
+  --amber:  #f59e0b;
+  --text:   #ebebf0;
+  --dim:    #52525b;
+  --green:  #22c55e;
+  --teal:   #0ea5e9;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body {
+  height:100%; overflow:hidden;
+  background:var(--bg); color:var(--text);
+  font-family:'DM Sans', sans-serif;
+}
+
+/* ── Status bar ──────────────────────────────────────────────── */
+#status-bar {
+  position:fixed; top:0; left:0; right:0; height:6px;
+  background:var(--border); z-index:100; flex-shrink:0;
+}
+#status-bar .fill {
+  height:100%; width:0; transition:width .4s;
+}
+#status-bar .fill.live     { background:var(--green); width:100%; }
+#status-bar .fill.rehearsal{ background:var(--teal);  width:100%; }
+#status-bar .fill.standby  { background:var(--dim);   width:30%; }
+
+/* ── Standby ─────────────────────────────────────────────────── */
+#standby {
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:32px;
+}
+#standby img { width:clamp(200px,22vw,380px); height:auto; opacity:.35; }
+#standby .label {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(2rem,4vw,4rem);
+  letter-spacing:6px; color:var(--dim);
+}
+
+/* ── Main stage ──────────────────────────────────────────────── */
+#stage {
+  display:none; flex-direction:column;
+  height:100%; padding-top:6px; /* account for status bar */
+}
+
+/* Song title bar */
+#title-bar {
+  flex-shrink:0; padding:clamp(16px,2.5vh,36px) clamp(32px,4vw,72px);
+  border-bottom:2px solid var(--border);
+  display:flex; align-items:baseline; gap:clamp(16px,2vw,36px);
+  flex-wrap:wrap;
+}
+#song-title {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(3.5rem,8vw,8rem);
+  letter-spacing:4px; line-height:1; color:var(--text);
+  flex:1; min-width:0;
+}
+#song-meta {
+  font-family:'DM Mono', monospace;
+  font-size:clamp(1.2rem,2.5vw,2.2rem);
+  color:var(--amber); flex-shrink:0; letter-spacing:2px;
+}
+#setlist-info {
+  font-family:'DM Mono', monospace;
+  font-size:clamp(.9rem,1.6vw,1.4rem);
+  color:var(--dim); flex-shrink:0;
+}
+
+/* Rehearsal indicator */
+#rehearsal-badge {
+  display:none;
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(1rem,1.8vw,1.6rem);
+  letter-spacing:3px; color:var(--teal);
+  padding:4px 16px; border:2px solid var(--teal); border-radius:6px;
+  flex-shrink:0;
+}
+
+/* Content area */
+#content-wrap {
+  flex:1; min-height:0; overflow-y:scroll;
+  padding:clamp(24px,3vh,52px) clamp(32px,4vw,72px);
+  padding-bottom:0;
+  /* Hide scrollbar visually — position is controlled by leader */
+  scrollbar-width:none;
+}
+#content-wrap::-webkit-scrollbar { display:none; }
+#content {
+  font-family:'DM Mono', monospace;
+  font-size:clamp(1.6rem,3.2vw,3.2rem);
+  line-height:2; white-space:pre-wrap;
+  color:var(--text);
+}
+#content .chord {
+  color:var(--amber);
+  font-size:.75em;
+  position:relative; top:-.35em;
+  margin:0 2px; font-weight:500;
+}
+
+/* Next song ribbon */
+#next-bar {
+  flex-shrink:0;
+  display:none;
+  align-items:center; gap:clamp(12px,2vw,24px);
+  padding:clamp(10px,1.5vh,20px) clamp(32px,4vw,72px);
+  background:var(--surface);
+  border-top:1px solid var(--border);
+}
+#next-lbl {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(1rem,1.8vw,1.8rem);
+  letter-spacing:3px; color:var(--dim);
+  flex-shrink:0;
+}
+#next-title {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(1rem,1.8vw,1.8rem);
+  letter-spacing:2px; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* Metronome flash overlay */
+#metro-flash {
+  position:fixed; inset:0; pointer-events:none; z-index:500;
+  opacity:0; transition:opacity 80ms ease-out;
+}
+#metro-flash.beat { opacity:1; transition:none; }
+</style>
+</head>
+<body>
+
+<div id="status-bar"><div class="fill standby" id="status-fill"></div></div>
+
+<!-- Standby screen -->
+<div id="standby">
+  <img src="/static/img/logo_large.png" alt="Setlist CMDR">
+  <div class="label">STANDBY</div>
+</div>
+
+<!-- Live stage -->
+<div id="stage">
+  <div id="title-bar">
+    <div id="song-title">—</div>
+    <div id="song-meta"></div>
+    <div id="rehearsal-badge">◈ REHEARSAL</div>
+    <div id="setlist-info"></div>
+  </div>
+  <div id="content-wrap">
+    <div id="content"></div>
+  </div>
+  <div id="next-bar">
+    <span id="next-lbl">NEXT ►</span>
+    <span id="next-title"></span>
+  </div>
+</div>
+
+<div id="metro-flash"></div>
+
+<script>
+// ── Config from URL params ────────────────────────────────────
+// ?mode=chords  → show chords view (default: lyrics)
+// ?fontscale=N  → multiply base font by N (e.g. 1.4 for even larger)
+const params    = new URLSearchParams(location.search);
+const viewMode  = params.get('mode') === 'chords' ? 'chords' : 'lyrics';
+const fontScale = parseFloat(params.get('fontscale')) || 1;
+if (fontScale !== 1) {
+  document.getElementById('content').style.fontSize =
+    `calc(clamp(1.6rem,3.2vw,3.2rem) * ${fontScale})`;
+}
+
+// ── State ─────────────────────────────────────────────────────
+let song        = null;
+let slSongs     = [];
+let slId        = null;
+let rehearsalOn = false;
+let ws          = null;
+let monitorXp   = 0;  // current transpose from leader
+
+// ── Clock sync (NTP-style) ────────────────────────────────────
+let clockOffset  = 0;
+let syncSamples  = [];
+
+function syncClock() {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'sync', t0: Date.now() }));
+}
+
+function handleSyncReply(msg) {
+  const t1     = Date.now();
+  const rtt    = t1 - msg.t0;
+  const offset = msg.server - (msg.t0 + rtt / 2);
+  syncSamples.push({ rtt, offset });
+  if (syncSamples.length < 16) {
+    setTimeout(syncClock, 40);
+  } else {
+    syncSamples.sort((a, b) => a.rtt - b.rtt);
+    const good      = syncSamples.slice(0, 8);
+    const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
+    const delta     = newOffset - clockOffset;
+    clockOffset     = clockOffset + Math.max(-20, Math.min(20, delta));
+    syncSamples     = [];
+  }
+}
+function serverNow() { return Date.now() + clockOffset; }
+setInterval(() => { syncSamples = []; syncClock(); }, 30000);
+
+// ── Metronome (Web Audio lookahead) ───────────────────────────
+let metroOn     = false;
+let metroBpm    = 0;
+let metroEpoch  = 0;
+let metroBar    = 4;
+let _metroAc    = null;
+let _schedTimer = null;
+let _lastBeat   = -1;
+let _audioEpoch = 0;
+
+function _getAc() {
+  if (!_metroAc) {
+    try { _metroAc = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  if (_metroAc && _metroAc.state === 'suspended') {
+    _metroAc.resume().catch(() => {});
+  }
+  // Return null if still suspended — fallback scheduler handles it
+  if (_metroAc && _metroAc.state === 'suspended') return null;
+  return _metroAc || null;
+}
+
+// Attempt to resume AudioContext on any user interaction
+document.addEventListener('click',      () => { if (_metroAc) _metroAc.resume().catch(()=>{}); }, { once:false, passive:true });
+document.addEventListener('touchstart', () => { if (_metroAc) _metroAc.resume().catch(()=>{}); }, { once:false, passive:true });
+
+function startMetroFromEpoch(bpm, beatsPerBar, serverEpoch) {
+  stopMetro();
+  metroBpm   = bpm;
+  metroBar   = beatsPerBar || 4;
+  metroEpoch = serverEpoch - clockOffset;
+  metroOn    = true;
+  const ac   = _getAc();
+  if (ac) _audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000;
+  _lastBeat   = -1;
+  _schedTimer = setInterval(_scheduler, 25);
+  _scheduler();
+}
+
+function stopMetro() {
+  metroOn = false;
+  clearInterval(_schedTimer);
+  _schedTimer = null;
+  _lastBeat   = -1;
+  document.getElementById('metro-flash').classList.remove('beat');
+}
+
+function _scheduler() {
+  if (!metroOn) return;
+  const ac = _metroAc;
+  if (!ac) { _schedulerFallback(); return; }
+  const beatSec  = 60 / metroBpm;
+  const now      = ac.currentTime;
+  const horizon  = now + 0.1;
+  let beat = Math.max(0, Math.floor((now - _audioEpoch) / beatSec));
+  while (true) {
+    const t = _audioEpoch + beat * beatSec;
+    if (t > horizon) break;
+    if (beat > _lastBeat) {
+      _lastBeat = beat;
+      const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
+      const delayMs = Math.max(0, (t - now) * 1000);
+      setTimeout(() => { if (metroOn) fireFlash(isDown); }, delayMs);
+    }
+    beat++;
+  }
+}
+
+function _schedulerFallback() {
+  const beatMs  = 60000 / metroBpm;
+  const beat    = Math.max(0, Math.floor((Date.now() - metroEpoch) / beatMs));
+  if (beat > _lastBeat) {
+    _lastBeat = beat;
+    fireFlash((beat % metroBar + metroBar) % metroBar === 0);
+  }
+}
+
+function fireFlash(isDown) {
+  const el     = document.getElementById('metro-flash');
+  const beatMs = 60000 / (metroBpm || 120);
+  el.style.background = isDown
+    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.35) 65%,rgba(255,255,255,0.6) 100%)'
+    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.12) 68%,rgba(255,255,255,0.28) 100%)';
+  el.classList.add('beat');
+  setTimeout(() => el.classList.remove('beat'),
+    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
+}
+
+// ── Chord transposition ───────────────────────────────────────
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+function xpChord(chord, n) {
+  if (n === 0) return chord;
+  const m = chord.match(/^([A-G][#b]?)(.*)/);
+  if (!m) return chord;
+  const root = m[1].replace('Bb','A#').replace('Eb','D#').replace('Ab','G#')
+                    .replace('Db','C#').replace('Gb','F#');
+  const i = NOTES.indexOf(root);
+  if (i === -1) return chord;
+  return NOTES[(i + n + 120) % 12] + m[2];
+}
+function xpText(text, n) {
+  if (!n) return text;
+  return text.replace(/\[([^\]]+)\]/g, (_, c) => `[${xpChord(c, n)}]`);
+}
+
+// ── Render ────────────────────────────────────────────────────
+function renderSong() {
+  if (!song) return;
+  document.getElementById('song-title').textContent = song.title;
+
+  const parts = [];
+  if (song.song_key) parts.push(song.song_key);
+  if (song.tempo)    parts.push(song.tempo + ' BPM');
+  document.getElementById('song-meta').textContent = parts.join('  ·  ');
+
+  const raw  = viewMode === 'chords'
+    ? (song.chords || song.lyrics || '')
+    : (song.lyrics || '');
+  const text = xpText(raw, monitorXp);
+  const html = viewMode === 'chords'
+    ? text.replace(/\[([^\]]+)\]/g, '<span class="chord">$1</span>').replace(/\n/g, '<br>')
+    : text.replace(/\[[^\]]+\]/g, '').replace(/\n/g, '<br>');
+  document.getElementById('content').innerHTML =
+    html || '<span style="color:var(--dim);font-style:italic;">No content for this song.</span>';
+}
+
+function showStage(isRehearsal) {
+  document.getElementById('standby').style.display = 'none';
+  document.getElementById('stage').style.display   = 'flex';
+  document.getElementById('rehearsal-badge').style.display = isRehearsal ? 'block' : 'none';
+  const fill = document.getElementById('status-fill');
+  fill.className = 'fill ' + (isRehearsal ? 'rehearsal' : 'live');
+}
+
+function showStandby() {
+  document.getElementById('stage').style.display   = 'none';
+  document.getElementById('standby').style.display = 'flex';
+  document.getElementById('status-fill').className = 'fill standby';
+  stopMetro();
+}
+
+// ── Live state ────────────────────────────────────────────────
+async function applyLive(state) {
+  if (!state.is_live) {
+    if (!rehearsalOn) showStandby();
+    return;
+  }
+
+  // Rehearsal deploy — song embedded in state
+  if (state.song && !state.setlist_id) {
+    rehearsalOn = true;
+    song = state.song;
+    showStage(true);
+    document.getElementById('next-bar').style.display = 'none';
+    document.getElementById('setlist-info').textContent = 'REHEARSAL';
+    renderSong();
+    return;
+  }
+
+  // Normal live show
+  rehearsalOn = false;
+
+  if (state.setlist_id !== slId) {
+    slId = state.setlist_id;
+    const r = await fetch(`/api/setlists/${slId}/songs`);
+    slSongs = await r.json();
+  }
+
+  const idx   = state.song_index || 0;
+  const entry = slSongs[idx];
+  const next  = slSongs[idx + 1];
+
+  document.getElementById('setlist-info').textContent =
+    (state.setlist_name || '') + '  ' + (idx + 1) + ' / ' + slSongs.length;
+
+  if (entry && (!song || song.id !== entry.id)) {
+    const sr = await fetch(`/api/songs/${entry.id}`);
+    song     = await sr.json();
+    monitorXp = 0;  // reset on song change; leader will broadcast current value
+  }
+
+  showStage(false);
+  renderSong();
+
+  if (next) {
+    document.getElementById('next-bar').style.display  = 'flex';
+    document.getElementById('next-title').textContent  = next.title;
+  } else {
+    document.getElementById('next-bar').style.display  = 'none';
+  }
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    syncSamples = [];
+    syncClock();
+  };
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'live_update')      applyLive(msg);
+    if (msg.type === 'sync_reply')       handleSyncReply(msg);
+    if (msg.type === 'rehearsal_update') {
+      rehearsalOn = true;
+      song = msg.song;
+      showStage(true);
+      document.getElementById('next-bar').style.display = 'none';
+      document.getElementById('setlist-info').textContent = 'REHEARSAL';
+      renderSong();
+    }
+    if (msg.type === 'rehearsal_stop') {
+      rehearsalOn = false;
+      showStandby();
+    }
+    if (msg.type === 'metronome_start') {
+      startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
+    }
+    if (msg.type === 'metronome_stop') stopMetro();
+    if (msg.type === 'scroll_update')  applyScroll(msg.pct);
+    if (msg.type === 'transpose_update') {
+      monitorXp = msg.xp || 0;
+      renderSong();
+    }
+  };
+
+  ws.onclose = () => { ws = null; setTimeout(connect, 3000); };
+  ws.onerror = () => ws.close();
+}
+
+// Keep-alive ping
+setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
+
+// ── Scroll sync ──────────────────────────────────────────────
+function applyScroll(pct) {
+  // Use rAF to ensure layout has been computed before reading scrollHeight
+  requestAnimationFrame(() => {
+    const wrap = document.getElementById('content-wrap');
+    if (!wrap) return;
+    const max = wrap.scrollHeight - wrap.clientHeight;
+    if (max <= 0) return;
+    wrap.scrollTop = pct * max;
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────────────
+(async function boot() {
+  connect();
+  // Check current live/rehearsal state immediately
+  try {
+    const [liveRes, rehRes] = await Promise.all([
+      fetch('/api/live'),
+      fetch('/api/rehearsal')
+    ]);
+    const live     = await liveRes.json();
+    const rehearsal = await rehRes.json();
+
+    if (rehearsal.active && rehearsal.song) {
+      rehearsalOn = true;
+      song = rehearsal.song;
+      showStage(true);
+      document.getElementById('next-bar').style.display = 'none';
+      document.getElementById('setlist-info').textContent = 'REHEARSAL';
+      renderSong();
+    } else {
+      applyLive(live);
+    }
+  } catch {}
+})();
+</script>
+</body>
+</html>
