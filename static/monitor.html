@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1920">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Setlist CMDR — Monitor</title>
 <meta name="theme-color" content="#08080f">
 <link rel="stylesheet" href="/fonts.css">
@@ -100,14 +100,56 @@ html, body {
 #content {
   font-family:'DM Mono', monospace;
   font-size:clamp(1.6rem,3.2vw,3.2rem);
-  line-height:2; white-space:pre-wrap;
+  line-height:1.45;
   color:var(--text);
+  overflow-x:hidden;
 }
-#content .chord {
-  color:var(--amber);
-  font-size:.75em;
-  position:relative; top:-.35em;
-  margin:0 2px; font-weight:500;
+#content .cp-row { margin-bottom:.1em; }
+#content .cp-chords { color:var(--amber); font-weight:700; line-height:1.35; white-space:pre-wrap; word-break:break-word; min-height:1.35em; }
+#content .cp-lyrics { white-space:pre-wrap; word-break:break-word; line-height:1.45; }
+#content .cp-lyric-only { white-space:pre-wrap; word-break:break-word; line-height:1.45; margin-bottom:.1em; }
+#content .cp-spacer { height:0.75em; }
+#content .cp-empty  { color:var(--dim); font-style:italic; white-space:normal; }
+
+/* Two-column layout (?cols=1) */
+body.two-col #content {
+  columns:2; column-gap:2.5em; white-space:normal;
+}
+body.two-col #content .cp-lyric-only,
+body.two-col #content .cp-spacer { break-inside:avoid; }
+body.two-col #content .cp-section { break-before:column; margin-top:0; }
+body.two-col #content .cp-section:first-child { break-before:auto; }
+body.two-col #content .cp-row { break-inside:avoid; white-space:pre; }
+
+/* High contrast */
+body.hi-contrast { --text:#ffffff; --dim:#aaaaaa; --amber:#ffcc00; }
+body.hi-contrast #content .cp-chords { color:#ffcc00; font-weight:700; }
+/* ── ChordPro section markers ────────────────────────────────── */
+.cp-section {
+  display:flex; align-items:center; gap:10px;
+  margin:0.9em 0 0.3em;
+  padding-bottom:0.2em;
+  border-bottom:1px solid var(--border);
+}
+.cp-section:first-child { margin-top:0; }
+.cp-section-label {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:0.95em; letter-spacing:2px;
+  color:var(--amber); flex-shrink:0;
+}
+.cp-section-ref {
+  display:flex; align-items:center; gap:10px;
+  margin:0.9em 0 0.3em;
+  padding-bottom:0.2em;
+  border-bottom:1px dashed var(--border);
+}
+.cp-section-ref .cp-section-label { color:var(--dim); }
+.cp-section-repeat {
+  font-size:0.72em; color:var(--dim);
+  font-family:'DM Mono', monospace; letter-spacing:1px;
+}
+.cp-repeat-content {
+  opacity:0.45;
 }
 
 /* Next song ribbon */
@@ -130,6 +172,117 @@ html, body {
   font-size:clamp(1rem,1.8vw,1.8rem);
   letter-spacing:2px; color:var(--text);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* Signal banner */
+#signal-overlay {
+  position:fixed; top:0; left:0; right:0; z-index:900;
+  display:flex; align-items:flex-start; justify-content:center;
+  padding:clamp(16px,3vh,36px);
+  pointer-events:none;
+  opacity:0; transform:translateY(-30px);
+  transition:opacity .25s ease, transform .25s ease;
+}
+#signal-overlay.show { opacity:1; transform:translateY(0); }
+#signal-banner {
+  background:var(--amber); color:#000;
+  font-family:'Bebas Neue', sans-serif;
+  font-size:clamp(2.5rem,7vw,6rem); letter-spacing:6px;
+  padding:clamp(14px,2.5vh,28px) clamp(40px,7vw,80px);
+  border-radius:16px; box-shadow:0 12px 60px rgba(0,0,0,.8);
+  white-space:nowrap; max-width:90vw;
+  overflow:hidden; text-overflow:ellipsis;
+}
+
+/* ── Fit mode (?fit=1) — compact layout + auto-scaled font ─────── */
+/* When enabled: tightest possible layout, font auto-shrunk to fit   */
+body.fit #title-bar {
+  padding:clamp(6px,1vh,12px) clamp(16px,2.5vw,36px);
+  gap:clamp(8px,1vw,16px);
+}
+body.fit #song-title {
+  font-size:clamp(2rem,5vw,5rem);
+}
+body.fit #song-meta {
+  font-size:clamp(.9rem,1.8vw,1.6rem);
+}
+body.fit #setlist-info { display:none; }
+body.fit #next-bar {
+  padding:clamp(4px,0.8vh,10px) clamp(16px,2.5vw,36px);
+}
+body.fit #next-lbl,
+body.fit #next-title {
+  font-size:clamp(.8rem,1.4vw,1.3rem);
+}
+body.fit #content-wrap {
+  padding:clamp(8px,1.2vh,18px) clamp(16px,2.5vw,36px);
+  padding-bottom:0;
+}
+body.fit #content {
+  line-height:1.25;
+}
+body.fit #content .cp-chords { line-height:1.2; }
+body.fit #content .cp-lyrics  { line-height:1.25; }
+body.fit #content .cp-lyric-only { line-height:1.25; margin-bottom:0; }
+body.fit #content .cp-spacer  { height:0.4em; }
+body.fit #content .cp-section { margin:0.4em 0 0.15em; }
+body.fit #content .cp-section-ref { margin:0.4em 0 0.15em; }
+body.fit #content .cp-row { margin-bottom:0.05em; }
+
+/* Portrait + fit combination */
+body.portrait.fit #content {
+  font-size:clamp(1rem,3.2vw,4rem);
+  line-height:1.25;
+}
+
+/* ── Portrait mode ───────────────────────────────────────────── */
+/* Applied when ?portrait=1 is set. Designed for a 1080x1920 display
+   (or any display rotated to portrait orientation).
+   vw and vh are swapped relative to landscape. */
+body.portrait #standby img {
+  width:clamp(160px,40vw,320px);
+}
+body.portrait #standby .label {
+  font-size:clamp(2rem,6vw,5rem);
+}
+body.portrait #title-bar {
+  flex-direction:column; align-items:flex-start;
+  gap:clamp(6px,1.2vh,16px);
+  padding:clamp(16px,2.5vh,32px) clamp(24px,4vw,48px);
+}
+body.portrait #song-title {
+  font-size:clamp(3rem,10vw,8rem);
+  flex:none; width:100%;
+}
+body.portrait #song-meta {
+  font-size:clamp(1.2rem,4vw,2.8rem);
+}
+body.portrait #setlist-info {
+  font-size:clamp(.9rem,2.5vw,1.6rem);
+}
+body.portrait #rehearsal-badge {
+  font-size:clamp(1rem,3vw,1.8rem);
+}
+body.portrait #content-wrap {
+  padding:clamp(16px,2vh,36px) clamp(24px,4vw,48px);
+  padding-bottom:0;
+}
+body.portrait #content {
+  /* In portrait vw is narrower so font is smaller by default —
+     boost with vh-relative sizing which is now the long axis */
+  font-size:clamp(1.4rem,4.2vw,5rem);
+  line-height:1.9;
+}
+body.portrait #next-bar {
+  padding:clamp(10px,1.5vh,20px) clamp(24px,4vw,48px);
+  gap:clamp(10px,2vw,20px);
+}
+body.portrait #next-lbl,
+body.portrait #next-title {
+  font-size:clamp(1rem,3vw,2.2rem);
+}
+body.portrait #signal-banner {
+  font-size:clamp(2rem,8vw,6rem);
 }
 
 /* Metronome flash overlay */
@@ -167,6 +320,7 @@ html, body {
   </div>
 </div>
 
+<div id="signal-overlay"><div id="signal-banner"></div></div>
 <div id="metro-flash"></div>
 
 <script>
@@ -176,9 +330,67 @@ html, body {
 const params    = new URLSearchParams(location.search);
 const viewMode  = params.get('mode') === 'chords' ? 'chords' : 'lyrics';
 const fontScale = parseFloat(params.get('fontscale')) || 1;
+const portrait  = params.get('portrait') === '1';
+const fitMode   = params.get('fit') === '1';
+const colMode   = params.get('cols') === '1';
+const hcMode    = params.get('hc') === '1';
+
+if (portrait) document.body.classList.add('portrait');
+if (fitMode)  document.body.classList.add('fit');
+if (colMode)  document.body.classList.add('two-col');
+if (hcMode)   document.body.classList.add('hi-contrast');
+
 if (fontScale !== 1) {
+  const baseSize = portrait
+    ? (fitMode ? 'clamp(1rem,3.2vw,4rem)' : 'clamp(1.4rem,4.2vw,5rem)')
+    : (fitMode ? 'clamp(1rem,2.4vw,2.6rem)' : 'clamp(1.6rem,3.2vw,3.2rem)');
   document.getElementById('content').style.fontSize =
-    `calc(clamp(1.6rem,3.2vw,3.2rem) * ${fontScale})`;
+    `calc(${baseSize} * ${fontScale})`;
+}
+
+// Auto-fit: after rendering, shrink font until content fits or hits minimum
+function autoFitContent() {
+  if (!fitMode) return;
+  const wrap    = document.getElementById('content-wrap');
+  const content = document.getElementById('content');
+  if (!wrap || !content) return;
+
+  // Start from current computed font size
+  const computed   = parseFloat(getComputedStyle(content).fontSize);
+  const minFontPx  = 22;   // never go below 22px — hard legibility floor for floor monitor
+  const maxFontPx  = computed;
+
+  // Reset to let CSS take over, then measure
+  content.style.fontSize = '';
+  // Force layout
+  void wrap.offsetHeight;
+
+  let fontSize = parseFloat(getComputedStyle(content).fontSize);
+
+  // If already fits, apply fontscale and return
+  if (wrap.scrollHeight <= wrap.clientHeight) {
+    if (fontScale !== 1) {
+      content.style.fontSize = (fontSize * fontScale) + 'px';
+    }
+    return;
+  }
+
+  // Binary search for the largest font that fits
+  let lo = minFontPx, hi = fontSize, best = minFontPx;
+  for (let iter = 0; iter < 12; iter++) {
+    const mid = (lo + hi) / 2;
+    content.style.fontSize = mid + 'px';
+    void wrap.offsetHeight;
+    if (wrap.scrollHeight <= wrap.clientHeight + 4) {
+      best = mid; lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  // Apply fontscale on top if set, but don't go below minimum
+  const final = Math.max(minFontPx, best * (fontScale || 1));
+  content.style.fontSize = final + 'px';
 }
 
 // ── State ─────────────────────────────────────────────────────
@@ -217,15 +429,20 @@ function handleSyncReply(msg) {
 function serverNow() { return Date.now() + clockOffset; }
 setInterval(() => { syncSamples = []; syncClock(); }, 30000);
 
-// ── Metronome (Web Audio lookahead) ───────────────────────────
-let metroOn     = false;
-let metroBpm    = 0;
-let metroEpoch  = 0;
-let metroBar    = 4;
-let _metroAc    = null;
-let _schedTimer = null;
-let _lastBeat   = -1;
-let _audioEpoch = 0;
+// ── Metronome (continuous audio/wall-clock bridge recalibration) ─────────
+// _audioEpoch is recomputed fresh on every scheduler tick from the current
+// clockOffset rather than being fixed at start time. This corrects for both
+// NTP drift and audio/wall-clock divergence continuously.
+
+let metroOn         = false;
+let metroBpm        = 0;
+let metroBar        = 4;
+let _metroAc        = null;
+let _metroST        = null;
+let _lastBeat       = -1;
+let _serverEpochMs  = 0;
+const _LOOKAHEAD    = 0.120;   // seconds ahead to schedule
+const _INTERVAL     = 20;      // scheduler poll ms
 
 function _getAc() {
   if (!_metroAc) {
@@ -234,77 +451,96 @@ function _getAc() {
   if (_metroAc && _metroAc.state === 'suspended') {
     _metroAc.resume().catch(() => {});
   }
-  // Return null if still suspended — fallback scheduler handles it
-  if (_metroAc && _metroAc.state === 'suspended') return null;
+  // Return the context even if still resuming — currentTime will be 0 briefly
+  // but _audioEpochNow recalibrates every tick so phase stays correct once running
   return _metroAc || null;
 }
 
-// Attempt to resume AudioContext on any user interaction
-document.addEventListener('click',      () => { if (_metroAc) _metroAc.resume().catch(()=>{}); }, { once:false, passive:true });
-document.addEventListener('touchstart', () => { if (_metroAc) _metroAc.resume().catch(()=>{}); }, { once:false, passive:true });
-
-function startMetroFromEpoch(bpm, beatsPerBar, serverEpoch) {
-  stopMetro();
-  metroBpm   = bpm;
-  metroBar   = beatsPerBar || 4;
-  metroEpoch = serverEpoch - clockOffset;
-  metroOn    = true;
-  const ac   = _getAc();
-  if (ac) _audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000;
-  _lastBeat   = -1;
-  _schedTimer = setInterval(_scheduler, 25);
-  _scheduler();
+function _audioEpochNow(ac) {
+  // Recompute beat-0 audio time fresh every tick using current clockOffset.
+  // Wall-clock time of beat 0 = _serverEpochMs - clockOffset (ms)
+  // Audio-clock offset from wall = ac.currentTime - Date.now()/1000
+  return (_serverEpochMs - clockOffset) / 1000 + (ac.currentTime - Date.now() / 1000);
 }
 
-function stopMetro() {
-  metroOn = false;
-  clearInterval(_schedTimer);
-  _schedTimer = null;
-  _lastBeat   = -1;
-  document.getElementById('metro-flash').classList.remove('beat');
-}
-
-function _scheduler() {
+function _metroScheduler() {
   if (!metroOn) return;
-  const ac = _metroAc;
-  if (!ac) { _schedulerFallback(); return; }
-  const beatSec  = 60 / metroBpm;
-  const now      = ac.currentTime;
-  const horizon  = now + 0.1;
-  let beat = Math.max(0, Math.floor((now - _audioEpoch) / beatSec));
+  const ac = _getAc();
+  // If context exists but hasn't started yet (currentTime still 0), use fallback
+  if (!ac || ac.currentTime < 0.001) { _metroFallback(); return; }
+  const beatSec    = 60 / metroBpm;
+  const nowAudio   = ac.currentTime;
+  const audioEpoch = _audioEpochNow(ac);
+  const horizon    = nowAudio + _LOOKAHEAD;
+  let beat = Math.max(0, Math.floor((nowAudio - audioEpoch) / beatSec));
   while (true) {
-    const t = _audioEpoch + beat * beatSec;
-    if (t > horizon) break;
+    const beatTime = audioEpoch + beat * beatSec;
+    if (beatTime > horizon) break;
     if (beat > _lastBeat) {
       _lastBeat = beat;
       const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
-      const delayMs = Math.max(0, (t - now) * 1000);
-      setTimeout(() => { if (metroOn) fireFlash(isDown); }, delayMs);
+      const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
+      setTimeout(() => { if (metroOn) _fireFlash(isDown); }, delayMs);
     }
     beat++;
   }
 }
 
-function _schedulerFallback() {
-  const beatMs  = 60000 / metroBpm;
-  const beat    = Math.max(0, Math.floor((Date.now() - metroEpoch) / beatMs));
+function _metroFallback() {
+  const beatMs     = 60000 / metroBpm;
+  const localEpoch = _serverEpochMs - clockOffset;
+  const beat       = Math.max(0, Math.floor((Date.now() - localEpoch) / beatMs));
   if (beat > _lastBeat) {
     _lastBeat = beat;
-    fireFlash((beat % metroBar + metroBar) % metroBar === 0);
+    _fireFlash((beat % metroBar + metroBar) % metroBar === 0);
   }
 }
 
-function fireFlash(isDown) {
-  const el     = document.getElementById('metro-flash');
+function _startMetroEngine(bpm, bar, serverEpochMs) {
+  _stopMetroEngine();
+  metroBpm       = bpm;
+  metroBar       = bar || 4;
+  _serverEpochMs = serverEpochMs;
+  metroOn        = true;
+  _lastBeat      = -1;
+  _getAc();  // prime the context before first beat
+  _metroST = setInterval(_metroScheduler, _INTERVAL);
+  _metroScheduler();
+}
+
+function _stopMetroEngine() {
+  metroOn = false;
+  clearInterval(_metroST);
+  _metroST  = null;
+  _lastBeat = -1;
+  const f = document.getElementById('metro-flash');
+  if (f) f.classList.remove('beat');
+}
+
+function _fireFlash(isDown) {
+  const el = document.getElementById('metro-flash');
+  if (!el) return;
   const beatMs = 60000 / (metroBpm || 120);
   el.style.background = isDown
-    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.35) 65%,rgba(255,255,255,0.6) 100%)'
-    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.12) 68%,rgba(255,255,255,0.28) 100%)';
+    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
+    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
   el.classList.add('beat');
   setTimeout(() => el.classList.remove('beat'),
     isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
 }
 
+['click','touchstart','keydown'].forEach(ev =>
+  document.addEventListener(ev, () => {
+    if (_metroAc) _metroAc.resume().catch(() => {});
+  }, { passive: true }));
+
+function startMetroFromEpoch(bpm, beatsPerBar, serverEpochMs) {
+  _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
+}
+
+function stopMetro() {
+  _stopMetroEngine();
+}
 // ── Chord transposition ───────────────────────────────────────
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 function xpChord(chord, n) {
@@ -322,25 +558,268 @@ function xpText(text, n) {
   return text.replace(/\[([^\]]+)\]/g, (_, c) => `[${xpChord(c, n)}]`);
 }
 
+
+// ── ChordPro renderer ────────────────────────────────────────
+// Bracket tokens are either chords [G] [Am7] [F#m]
+// or section markers [Verse 1] [Chorus] [Bridge] [Pre-Chorus] [Outro]
+// A bare section reference [Chorus] with no following content
+// renders as a "repeat" cue pointing back to the first occurrence.
+
+const _CHORD_RE = /^[A-G][#b]?(m|maj|min|dim|aug|sus|add|M)?[0-9]*(\/[A-G][#b]?)?$/;
+
+function _isChord(token) {
+  return _CHORD_RE.test(token.trim());
+}
+
+function _isSectionLine(line) {
+  // A line is a section marker line if it is exactly one bracket token
+  // and that token is not a chord name.
+  const m = line.trim().match(/^\[([^\]]+)\]$/);
+  return m ? !_isChord(m[1]) : false;
+}
+
+function _sectionLabel(line) {
+  const m = line.trim().match(/^\[([^\]]+)\]$/);
+  return m ? m[1] : null;
+}
+
+// Pre-pass: collect content for each named section so bare references
+// can show a "play as X" indicator.
+function _buildSectionMap(lines) {
+  const map = {};   // label -> [content lines]
+  let current = null;
+  for (const line of lines) {
+    if (_isSectionLine(line)) {
+      const label = _sectionLabel(line);
+      if (!(label in map)) {
+        map[label] = [];
+        current = label;
+      } else {
+        current = null;  // second occurrence — bare reference
+      }
+    } else if (current !== null) {
+      map[current].push(line);
+    }
+  }
+  return map;
+}
+
+function _renderLines(lines, xpSemitones, mode) {
+  const out = [];
+  for (const line of lines) {
+    // Section marker — skip here, already handled by caller
+    if (_isSectionLine(line)) continue;
+
+    const hasBracket = line.includes('[');
+
+    if (!hasBracket) {
+      if (line.trim() === '') {
+        out.push('<div class="cp-spacer"></div>');
+      } else if (mode === 'lyrics') {
+        out.push('<div class="cp-lyric-only">' + escHtml(line) + '</div>');
+      } else {
+        out.push('<div class="cp-lyric-only">' + escHtml(line) + '</div>');
+      }
+      continue;
+    }
+
+    // Parse chords out of the line
+    const chords = [];
+    let lyric = '', charPos = 0, cursor = 0;
+    while (cursor < line.length) {
+      if (line[cursor] === '[') {
+        const close = line.indexOf(']', cursor);
+        if (close === -1) { lyric += line[cursor++]; charPos++; continue; }
+        const token = line.slice(cursor + 1, close);
+        if (_isChord(token)) {
+          // Apply transposition
+          const name = xpSemitones ? xpChord(token, xpSemitones) : token;
+          chords.push({ pos: charPos, name });
+        } else {
+          // Inline section marker inside a lyric line — treat as lyric text
+          lyric += token;
+          charPos += token.length;
+        }
+        cursor = close + 1;
+      } else {
+        lyric += line[cursor];
+        charPos++;
+        cursor++;
+      }
+    }
+
+    if (mode === 'lyrics') {
+      // Lyrics mode — strip chords, just show lyric text
+      if (lyric.trim() === '') continue;
+      out.push('<div class="cp-lyric-only">' + escHtml(lyric) + '</div>');
+    } else {
+      // Chords mode — build chord row above lyric row
+      let chordRow = '', col = 0;
+      for (const c of chords) {
+        const sp = Math.max(1, c.pos - col);
+        chordRow += ' '.repeat(sp);
+        chordRow += c.name;
+        col = c.pos + Math.max(1, c.name.length);
+      }
+      const hasLyric = lyric.trim().length > 0;
+      if (chords.length === 0 && !hasLyric) continue;
+      out.push(
+        '<div class="cp-row">' +
+          '<div class="cp-chords">' + escHtml(chordRow) + '</div>' +
+          (hasLyric ? '<div class="cp-lyrics">' + escHtml(lyric) + '</div>' : '') +
+        '</div>'
+      );
+    }
+  }
+  return out.join('');
+}
+
+function chordProToHTML(text, xpSemitones) {
+  if (!text) return '';
+  const lines      = text.split('\n');
+  const sectionMap = _buildSectionMap(lines);
+  const out        = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (_isSectionLine(line)) {
+      const label   = _sectionLabel(line);
+      const content = sectionMap[label] || [];
+
+      // Check if this is a bare back-reference (section appeared before)
+      // by scanning forward for content lines
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+
+      if (!hasContent && content.length > 0) {
+        // Bare reference — show a repeat cue + the section content dimmed
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+        out.push('<div class="cp-repeat-content">');
+        out.push(_renderLines(content, xpSemitones, 'chords'));
+        out.push('</div>');
+        i++;
+        // Skip any blank lines following the bare reference
+        while (i < lines.length && lines[i].trim() === '') i++;
+      } else {
+        // First occurrence with content — render section header + lines
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        i++;
+        // Collect and render lines until next section marker
+        const sectionLines = [];
+        while (i < lines.length && !_isSectionLine(lines[i])) {
+          sectionLines.push(lines[i]);
+          i++;
+        }
+        out.push(_renderLines(sectionLines, xpSemitones, 'chords'));
+      }
+    } else {
+      // Line outside any section marker
+      out.push(_renderLines([line], xpSemitones, 'chords'));
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No content for this song.</span>';
+}
+
+function lyricsOnlyHTML(text, xpSemitones) {
+  if (!text) return '';
+  const lines      = text.split('\n');
+  const sectionMap = _buildSectionMap(lines);
+  const out        = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (_isSectionLine(line)) {
+      const label   = _sectionLabel(line);
+      const content = sectionMap[label] || [];
+
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+
+      if (!hasContent && content.length > 0) {
+        // Repeat cue in lyrics mode
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+        out.push('<div class="cp-repeat-content">');
+        out.push(_renderLines(content, xpSemitones, 'lyrics'));
+        out.push('</div>');
+        i++;
+        while (i < lines.length && lines[i].trim() === '') i++;
+      } else {
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        i++;
+        const sectionLines = [];
+        while (i < lines.length && !_isSectionLine(lines[i])) {
+          sectionLines.push(lines[i]);
+          i++;
+        }
+        out.push(_renderLines(sectionLines, xpSemitones, 'lyrics'));
+      }
+    } else {
+      out.push(_renderLines([line], xpSemitones, 'lyrics'));
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No content for this song.</span>';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+
 // ── Render ────────────────────────────────────────────────────
 function renderSong() {
   if (!song) return;
   document.getElementById('song-title').textContent = song.title;
-
+  const capo  = song.capo || 0;
+  const dispXp = monitorXp - capo;
   const parts = [];
   if (song.song_key) parts.push(song.song_key);
+  if (capo)          parts.push('Capo ' + capo);
   if (song.tempo)    parts.push(song.tempo + ' BPM');
   document.getElementById('song-meta').textContent = parts.join('  ·  ');
+  const el = document.getElementById('content');
+  if (viewMode === 'chords') {
+    const raw = song.chords || song.lyrics || '';
+    el.innerHTML = chordProToHTML(raw, dispXp) ||
+      '<span class="cp-empty">No content for this song.</span>';
+  } else {
+    const raw = song.lyrics || song.chords || '';
+    el.innerHTML = lyricsOnlyHTML(raw, dispXp) ||
+      '<span class="cp-empty">No content for this song.</span>';
+  }
 
-  const raw  = viewMode === 'chords'
-    ? (song.chords || song.lyrics || '')
-    : (song.lyrics || '');
-  const text = xpText(raw, monitorXp);
-  const html = viewMode === 'chords'
-    ? text.replace(/\[([^\]]+)\]/g, '<span class="chord">$1</span>').replace(/\n/g, '<br>')
-    : text.replace(/\[[^\]]+\]/g, '').replace(/\n/g, '<br>');
-  document.getElementById('content').innerHTML =
-    html || '<span style="color:var(--dim);font-style:italic;">No content for this song.</span>';
+  if (fitMode) requestAnimationFrame(() => requestAnimationFrame(autoFitContent));
 }
 
 function showStage(isRehearsal) {
@@ -440,6 +919,7 @@ function connect() {
     }
     if (msg.type === 'metronome_stop') stopMetro();
     if (msg.type === 'scroll_update')  applyScroll(msg.pct);
+    if (msg.type === 'signal')         showSignal(msg.text);
     if (msg.type === 'transpose_update') {
       monitorXp = msg.xp || 0;
       renderSong();
@@ -452,6 +932,17 @@ function connect() {
 
 // Keep-alive ping
 setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
+
+// ── Signal banner ────────────────────────────────────────────
+let _signalTimer = null;
+function showSignal(text) {
+  const overlay = document.getElementById('signal-overlay');
+  const banner  = document.getElementById('signal-banner');
+  banner.textContent = text;
+  overlay.classList.add('show');
+  if (_signalTimer) clearTimeout(_signalTimer);
+  _signalTimer = setTimeout(() => overlay.classList.remove('show'), 3000);
+}
 
 // ── Scroll sync ──────────────────────────────────────────────
 function applyScroll(pct) {
