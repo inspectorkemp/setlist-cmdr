@@ -311,6 +311,7 @@ if ('serviceWorker' in navigator) {
       <div id="l-controls">
         <button class="l-ctrl active" id="l-btn-mode"   onclick="lToggleMode()">LYRICS</button>
         <button class="l-ctrl"        id="l-btn-scroll" onclick="lToggleScroll()">» AUTO</button>
+        <button class="l-ctrl"        id="l-btn-cols"   onclick="lToggleColumns()" title="Two columns">⫴</button>
         <div style="flex:1;"></div>
         <div class="font-size-ctrl">
           <span class="font-size-lbl">A</span>
@@ -1641,6 +1642,7 @@ async function renderStageCard() {
     lStopScroll();
   }
   lRenderSong();
+  lApplyColumns();
   // Broadcast current transpose (may be 0 after song change)
   if (leaderWs && leaderWs.readyState === 1) {
     leaderWs.send(JSON.stringify({ type: 'transpose_update', xp: lXp }));
@@ -1905,6 +1907,32 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function splitToColumns(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const blocks = Array.from(tmp.children);
+  if (blocks.length < 2) return html;
+  const total = blocks.reduce((s, b) => s + b.innerText.length, 0);
+  let half = 0, splitAt = Math.floor(blocks.length / 2);
+  for (let i = 0; i < blocks.length; i++) {
+    half += blocks[i].innerText.length;
+    if (half >= total / 2) { splitAt = i + 1; break; }
+  }
+  for (let d = 0; d <= 3; d++) {
+    for (const offset of [d, -d]) {
+      const idx = splitAt + offset;
+      if (idx > 0 && idx < blocks.length &&
+          blocks[idx] && blocks[idx].classList.contains('cp-section')) {
+        splitAt = idx; break;
+      }
+    }
+  }
+  const col1 = blocks.slice(0, splitAt).map(b => b.outerHTML).join('');
+  const col2 = blocks.slice(splitAt).map(b => b.outerHTML).join('');
+  return '<div class="col-split"><div class="col-half">' + col1 +
+    '</div><div class="col-half">' + col2 + '</div></div>';
+}
+
 function lRenderSong() {
   if (!lSong) {
     document.getElementById('l-song-content').innerHTML =
@@ -1936,15 +1964,17 @@ function lRenderSong() {
   }
 
   const el = document.getElementById('l-song-content');
+  let html;
   if (lMode === 'lyrics') {
     const raw = lSong.lyrics || lSong.chords || '';
-    el.innerHTML = lyricsOnlyHTML(raw, dispXp) ||
+    html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
   } else {
     const raw = lSong.chords || lSong.lyrics || '';
-    el.innerHTML = chordProToHTML(raw, dispXp) ||
+    html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
   }
+  el.innerHTML = lTwoCol ? splitToColumns(html) : html;
 }
 
 // ── Compact stage mode ────────────────────────────────────────
@@ -1966,6 +1996,21 @@ function applyCompactStage() {
     panel.classList.remove('compact');
     if (btn) { btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
   }
+}
+
+// ── Two-column layout ─────────────────────────────────────────
+let lTwoCol = localStorage.getItem('l_twocol') === '1';
+
+function lToggleColumns() {
+  lTwoCol = !lTwoCol;
+  localStorage.setItem('l_twocol', lTwoCol ? '1' : '0');
+  lApplyColumns();
+}
+
+function lApplyColumns() {
+  const btn = document.getElementById('l-btn-cols');
+  if (btn) btn.classList.toggle('active', lTwoCol);
+  lRenderSong();
 }
 
 function lToggleMode() {
