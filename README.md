@@ -17,7 +17,9 @@ The band leader controls everything from a PIN-protected web interface. Musician
 ## Features
 
 **Song library**
-Store your entire repertoire. Each song holds a title, artist, key, tempo, duration, status, lyrics, chords in ChordPro format, and notes. Search by title or artist. Filter by status. Four status levels: Active, Needs Work, Maybe, and Retired.
+Store your entire repertoire. Each song holds a title, artist, key, capo, tempo, duration, status, lyrics, chords in ChordPro format, and notes. Search by title or artist. Filter by status. Four status levels: Active, Needs Work, Maybe, and Retired.
+
+**Capo** is a first-class field. When set, all chord displays show the fingered shapes (what the guitarist actually plays) rather than the sounding pitch. A song in B with Capo 2 shows G-shape chords. The per-device transpose control applies on top of the capo offset.
 
 **ChordPro chord editor**
 Chords are stored using ChordPro notation with chord names in square brackets inline with lyrics. The song editor includes a fullscreen side-by-side editor with a live preview that updates as you type. Toggle between Lyrics and Chords view in the preview before saving. Press Escape or click Done to write back to the form.
@@ -40,10 +42,19 @@ Click Rehearse on any song in the Songs tab to push that song to all musician sc
 A dedicated full-screen display page at `/monitor` designed for a floor wedge or large display viewed from several feet away. Shows the current song title and key in very large type, followed by the full lyrics or chords, with a Next ribbon at the bottom. The monitor tracks the leader's scroll position in real time and reflects transpose changes immediately. No controls, no header chrome.
 
 URL parameters for the monitor:
-- `?mode=chords` to show chords view instead of lyrics
-- `?fontscale=1.3` to scale the base font up or down (default is 1.0)
 
-Example: `http://192.168.1.100:8000/monitor?mode=chords&fontscale=0.9`
+| Parameter | Values | Effect |
+|---|---|---|
+| `mode` | `lyrics` (default), `chords` | Which view to show |
+| `fontscale` | e.g. `0.9`, `1.3` | Scale the base font size |
+| `portrait` | `1` | Portrait layout for a rotated display |
+| `fit` | `1` | Compact layout with auto-fit font scaling |
+| `cols` | `1` | Two-column layout |
+| `hc` | `1` | High contrast mode |
+
+Example: `http://192.168.1.100:8000/monitor?mode=chords&fit=1&cols=1`
+
+In fit mode, the layout is maximally compacted and the font is automatically scaled down until all content fits on screen, stopping at a minimum legible size. Combine with `cols=1` for the best chance of fitting a full song on one screen.
 
 **Synced flash metronome**
 The leader starts the metronome and all connected devices flash in phase. Sync is achieved via an NTP-style clock calibration over WebSocket: each device exchanges 16 round-trip timestamps with the server on connect, discards the 8 with the worst round-trip times, and averages the rest to compute a precise clock offset. Re-syncs every 30 seconds with drift clamped to 20ms per cycle to avoid phase jumps mid-performance.
@@ -57,7 +68,10 @@ Send one-tap text alerts to all musician screens during a live show or rehearsal
 Pair any Bluetooth page turner with the leader device and assign its keys in Settings. Default mapping is Right Arrow for next song and Left Arrow for previous. Four actions can be assigned independently: Next Song, Prev Song, Scroll Down, and Scroll Up. Three built-in presets cover the most common pedal brands. Scroll Down and Scroll Up move the content area 80% of its visible height per press.
 
 **Per-musician controls**
-Each musician independently toggles between Lyrics and Chords view, adjusts the font size with a slider, transposes chords up or down by up to 11 semitones, and toggles autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view.
+Each musician independently controls: Lyrics/Chords view toggle, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view, including the two-column toggle.
+
+**Compact stage mode (leader)**
+A ⊡ button in the live control bar collapses all chrome to minimum height, maximising the content area. Saved across sessions.
 
 **Musician roster**
 The leader sees a live count of connected musicians in the nav bar. Clicking it opens a popup showing each musician by name. The roster updates in real time.
@@ -152,6 +166,13 @@ Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars http://<main-pi-
 
 The monitor Pi needs no server of its own. It just opens a browser pointed at the main Pi.
 
+Add URL parameters to the kiosk URL to configure the display. For example, fit mode with two-column chords view:
+
+```
+Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars \
+  "http://<main-pi-ip>:8000/monitor?mode=chords&fit=1&cols=1"
+```
+
 ---
 
 ## First login
@@ -230,7 +251,8 @@ The leader page and musician page install separately. Each person installs which
 2. Open `http://<pi-ip>:8000/` in a browser
 3. Tap your name from the crew buttons, or type a name and tap Join
 4. Wait on the Standby screen until the leader engages a show or starts a rehearsal
-5. Use the LYRICS / CHORDS toggle, font size slider, transpose buttons, and AUTO scroll as needed
+5. Use the controls bar to adjust: LYRICS/CHORDS toggle, font size, line spacing (≡), two-column layout (⫴), high contrast (◐), transpose (♭/♯), and AUTO scroll. All settings are saved per device.
+6. Tap anywhere in the content area to hide the controls bar and maximise reading space. Tap again to bring it back.
 
 ---
 
@@ -243,16 +265,35 @@ Wrap chord names in square brackets before the syllable where they are played:
 [G]Here comes the [Em]sun, and I [C]say it's all-[D]right
 ```
 
-Chords view shows chord names inline with the lyrics. Lyrics view strips all chord markers. Each device transposes independently.
+Chords are shown on their own line above the lyric in the traditional lead-sheet layout. Lyrics view strips all chord markers and shows clean text only. Each device transposes independently.
 
-The chord editor's Convert tool accepts the standard chords-above-lyrics format:
+**Section markers** use the same bracket syntax but contain a section name rather than a chord. Any token that is not a valid chord name is treated as a section marker:
+
+```
+[Verse 1]
+[G]Here comes the [Em]sun
+
+[Chorus]
+[C]Come [G]together [D]right now
+
+[Verse 2]
+[G]He wear no shoeshine
+
+[Chorus]
+```
+
+The second `[Chorus]` with no content following it is a back-reference. It renders as a dimmed repeat cue showing the chorus content at reduced opacity, rather than duplicating the full text. This keeps long songs compact while keeping the structure visible.
+
+Section headers render in amber with a ruled divider, making them easy to spot while scanning.
+
+**The Convert tool** in the fullscreen chord editor accepts the standard chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets:
 
 ```
 G           Em          C      D
 Here comes the sun, doo doo doo doo
 ```
 
-Paste it in, click Convert, and it becomes ChordPro.
+Paste it in, click Convert to ChordPro, and the chord positions are mapped to the lyric text automatically.
 
 ---
 
