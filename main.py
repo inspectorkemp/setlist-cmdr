@@ -14,6 +14,8 @@ import shutil
 import hashlib
 import secrets
 import time
+import re
+import io
 from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -46,15 +48,51 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
-    conn = get_db()
+# ──────────────────────────────────────────────────────────────
+# Schema migrations
+# Each entry is (version: int, description: str, fn: callable(conn)).
+# Migrations run in version order. The highest applied version is
+# stored in app_state under key 'schema_version'.
+# Adding a new column/table: append a new entry — never edit existing ones.
+# ──────────────────────────────────────────────────────────────
+
+def _schema_version(conn) -> int:
+    """Return the current schema version, or 0 if never set."""
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_state WHERE key='schema_version'"
+        ).fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+def _set_schema_version(conn, version: int):
+    conn.execute(
+        "INSERT OR REPLACE INTO app_state (key, value) VALUES ('schema_version', ?)",
+        (str(version),)
+    )
+    conn.commit()
+
+def _col_exists(conn, table: str, col: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r[1] == col for r in rows)
+
+def _table_exists(conn, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
+
+# ── Migration definitions ─────────────────────────────────────
+
+def _m001_base_schema(conn):
+    """Create all base tables if they don't exist."""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS songs (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             title       TEXT    NOT NULL,
             artist      TEXT,
             song_key    TEXT,
-            capo        INTEGER DEFAULT 0,
             tempo       INTEGER,
             duration    INTEGER,
             status      TEXT DEFAULT 'active',
@@ -63,16 +101,12 @@ def init_db():
             notes       TEXT,
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-
         CREATE TABLE IF NOT EXISTS setlists (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL,
             description TEXT,
-            active      INTEGER DEFAULT 1,
-            position    INTEGER DEFAULT 0,
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-
         CREATE TABLE IF NOT EXISTS setlist_songs (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             setlist_id    INTEGER NOT NULL,
@@ -82,48 +116,79 @@ def init_db():
             FOREIGN KEY (setlist_id) REFERENCES setlists(id),
             FOREIGN KEY (song_id)    REFERENCES songs(id)
         );
-
         CREATE TABLE IF NOT EXISTS app_state (
             key   TEXT PRIMARY KEY,
             value TEXT
         );
+    """)
+    conn.commit()
 
+def _m002_setlist_active_position(conn):
+    """Add active and position columns to setlists."""
+    if not _col_exists(conn, 'setlists', 'active'):
+        conn.execute("ALTER TABLE setlists ADD COLUMN active INTEGER DEFAULT 1")
+    if not _col_exists(conn, 'setlists', 'position'):
+        conn.execute("ALTER TABLE setlists ADD COLUMN position INTEGER DEFAULT 0")
+    conn.commit()
+
+def _m003_band_members(conn):
+    """Add band_members table."""
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS band_members (
             id       INTEGER PRIMARY KEY AUTOINCREMENT,
             name     TEXT NOT NULL UNIQUE,
             position INTEGER DEFAULT 0
-        );
+        )
     """)
     conn.commit()
-    # Migrations for existing databases
-    try:
-        conn.execute("ALTER TABLE setlists ADD COLUMN active INTEGER DEFAULT 1")
-        conn.commit()
-    except Exception:
-        pass
-    try:
-        conn.execute("ALTER TABLE setlists ADD COLUMN position INTEGER DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass
-    # capo column — migrate existing databases
-    try:
+
+def _m004_songs_capo(conn):
+    """Add capo column to songs."""
+    if not _col_exists(conn, 'songs', 'capo'):
         conn.execute("ALTER TABLE songs ADD COLUMN capo INTEGER DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass
-    # band_members added in 2025 — create if missing on older databases
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS band_members (
-                id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                name     TEXT NOT NULL UNIQUE,
-                position INTEGER DEFAULT 0
-            )
-        """)
-        conn.commit()
-    except Exception:
-        pass
+    conn.commit()
+
+# ── Migration registry — append only, never edit existing entries ─
+_MIGRATIONS = [
+    (1, "Base schema",                   _m001_base_schema),
+    (2, "Setlist active/position",       _m002_setlist_active_position),
+    (3, "Band members table",            _m003_band_members),
+    (4, "Songs capo column",             _m004_songs_capo),
+]
+
+def init_db():
+    """Run all pending migrations in version order."""
+    conn = get_db()
+
+    # Ensure app_state exists before we try to read schema_version from it.
+    # This is the one bootstrapping step that must run unconditionally.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_state (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+    conn.commit()
+
+    current = _schema_version(conn)
+
+    pending = [(v, desc, fn) for v, desc, fn in _MIGRATIONS if v > current]
+    if pending:
+        for version, desc, fn in pending:
+            try:
+                fn(conn)
+                _set_schema_version(conn, version)
+                print(f"[DB] Migration {version}: {desc} — applied")
+            except Exception as exc:
+                print(f"[DB] Migration {version}: {desc} — FAILED: {exc}")
+                raise RuntimeError(
+                    f"Database migration {version} ('{desc}') failed: {exc}. "
+                    "The database may be in a partial state. "
+                    "Restore from a backup before restarting."
+                ) from exc
+    else:
+        print(f"[DB] Schema up to date (version {current})")
+
     conn.close()
 
 # ──────────────────────────────────────────────────────────────
@@ -547,6 +612,87 @@ def delete_song(song_id: int):
     conn.close()
     return {"ok": True}
 
+# ── Song file import ─────────────────────────────────────────
+# Supported: .pdf (pdfplumber), .txt, .chopro, .cho, .crd, .chordpro
+
+def _extract_pdf_text(data: bytes) -> str:
+    """Extract text from a born-digital PDF using pdfplumber.
+    Returns plain text with page breaks removed."""
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            pages = []
+            for page in pdf.pages:
+                text = page.extract_text(x_tolerance=2, y_tolerance=3)
+                if text:
+                    pages.append(text.strip())
+            return "\n\n".join(pages)
+    except Exception as exc:
+        raise HTTPException(400, f"Could not extract text from PDF: {exc}")
+
+def _guess_title_artist(text: str, filename: str) -> tuple[str, str]:
+    """Heuristically extract title and artist from the first few lines."""
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:6]
+    title = ""
+    artist = ""
+    for line in lines:
+        # Skip lines that look like chords, keys, capo, tempo
+        if re.match(r'^[A-G][#b]?', line) and len(line) < 12:
+            continue
+        if re.match(r'^(key|capo|tempo|bpm|tuning|time)[:\s]', line, re.I):
+            continue
+        if not title:
+            title = line[:80]
+        elif not artist:
+            # Second substantive line is often the artist
+            # but skip if it looks like a lyric (contains many spaces or is long)
+            if len(line) < 50 and line.count(' ') < 6:
+                artist = line[:80]
+            break
+    if not title:
+        # Fall back to filename without extension
+        title = re.sub(r'\.[^.]+$', '', filename).replace('_', ' ').replace('-', ' ').strip()
+    return title, artist
+
+def _clean_extracted_text(text: str) -> str:
+    """Normalise whitespace and remove common PDF artefacts."""
+    # Collapse runs of blank lines to a single blank line
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # Remove trailing whitespace on each line
+    text = '\n'.join(l.rstrip() for l in text.splitlines())
+    return text.strip()
+
+@app.post("/api/songs/import-file", dependencies=[Depends(require_auth)])
+async def import_song_file(file: UploadFile = File(...)):
+    """Accept a PDF, .txt, .chopro, .cho, .crd, or .chordpro file.
+    Returns extracted title, artist, and raw text ready for the song editor."""
+    name = (file.filename or "").lower()
+    data = await file.read()
+
+    if name.endswith(".pdf"):
+        raw = _extract_pdf_text(data)
+    elif name.endswith((".txt", ".chopro", ".cho", ".crd", ".chordpro", ".pro")):
+        try:
+            raw = data.decode("utf-8")
+        except UnicodeDecodeError:
+            raw = data.decode("latin-1", errors="replace")
+    else:
+        raise HTTPException(400, "Unsupported file type. Accepted: .pdf .txt .chopro .cho .crd .chordpro")
+
+    raw = _clean_extracted_text(raw)
+    title, artist = _guess_title_artist(raw, file.filename or "Imported Song")
+
+    # Detect whether text already looks like ChordPro (has [Chord] markers)
+    is_chordpro = bool(re.search(r'\[[A-G][^\]]*\]', raw))
+
+    return {
+        "title":      title,
+        "artist":     artist,
+        "raw":        raw,
+        "is_chordpro": is_chordpro,
+        "filename":   file.filename,
+    }
+
 # ── Setlists ──────────────────────────────────────────────────
 
 @app.get("/api/setlists")
@@ -859,7 +1005,6 @@ def serve_fonts_css():
 def _inject_build(html: str) -> str:
     """Replace the placeholder CSS version and inject BUILD_ID meta tag."""
     # Bust the CSS link regardless of whatever ?v= value is in the file
-    import re
     html = re.sub(r'/static/leader\.css(\?v=[^"]*)?', f'/static/leader.css?v={BUILD_ID}', html)
     # Inject a meta tag so the SW and JS can read the build ID
     meta = f'<meta charset="UTF-8">\n<meta name="build-id" content="{BUILD_ID}">'
