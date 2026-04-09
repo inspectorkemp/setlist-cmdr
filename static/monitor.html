@@ -111,15 +111,8 @@ html, body {
 #content .cp-spacer { height:0.75em; }
 #content .cp-empty  { color:var(--dim); font-style:italic; white-space:normal; }
 
-/* Two-column layout (?cols=1) */
-body.two-col #content {
-  columns:2; column-gap:2.5em; white-space:normal;
-}
-body.two-col #content .cp-lyric-only,
-body.two-col #content .cp-spacer { break-inside:avoid; }
-body.two-col #content .cp-section { break-before:column; margin-top:0; }
-body.two-col #content .cp-section:first-child { break-before:auto; }
-body.two-col #content .cp-row { break-inside:avoid; white-space:pre; }
+.col-split { display:flex; gap:1.5em; align-items:flex-start; }
+.col-half  { flex:1; min-width:0; }
 
 /* High contrast */
 body.hi-contrast { --text:#ffffff; --dim:#aaaaaa; --amber:#ffcc00; }
@@ -797,6 +790,32 @@ function escHtml(s) {
 }
 
 
+function splitToColumns(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const blocks = Array.from(tmp.children);
+  if (blocks.length < 2) return html;
+  const total = blocks.reduce((s, b) => s + b.innerText.length, 0);
+  let half = 0, splitAt = Math.floor(blocks.length / 2);
+  for (let i = 0; i < blocks.length; i++) {
+    half += blocks[i].innerText.length;
+    if (half >= total / 2) { splitAt = i + 1; break; }
+  }
+  for (let d = 0; d <= 3; d++) {
+    for (const offset of [d, -d]) {
+      const idx = splitAt + offset;
+      if (idx > 0 && idx < blocks.length &&
+          blocks[idx] && blocks[idx].classList.contains('cp-section')) {
+        splitAt = idx; break;
+      }
+    }
+  }
+  const col1 = blocks.slice(0, splitAt).map(b => b.outerHTML).join('');
+  const col2 = blocks.slice(splitAt).map(b => b.outerHTML).join('');
+  return '<div class="col-split"><div class="col-half">' + col1 +
+    '</div><div class="col-half">' + col2 + '</div></div>';
+}
+
 // ── Render ────────────────────────────────────────────────────
 function renderSong() {
   if (!song) return;
@@ -809,15 +828,17 @@ function renderSong() {
   if (song.tempo)    parts.push(song.tempo + ' BPM');
   document.getElementById('song-meta').textContent = parts.join('  ·  ');
   const el = document.getElementById('content');
+  let html;
   if (viewMode === 'chords') {
     const raw = song.chords || song.lyrics || '';
-    el.innerHTML = chordProToHTML(raw, dispXp) ||
+    html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   } else {
     const raw = song.lyrics || song.chords || '';
-    el.innerHTML = lyricsOnlyHTML(raw, dispXp) ||
+    html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   }
+  el.innerHTML = colMode ? splitToColumns(html) : html;
 
   if (fitMode) requestAnimationFrame(() => requestAnimationFrame(autoFitContent));
 }
