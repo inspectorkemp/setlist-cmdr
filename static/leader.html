@@ -277,6 +277,9 @@ if ('serviceWorker' in navigator) {
         </select>
         <button class="ctrl-bar-btn danger" id="rehear-end-btn" onclick="stopRehearsal()"
                 style="display:none;background:var(--purple);border-color:var(--purple);color:#fff;">◼ END REHEARSAL</button>
+        <button class="ctrl-bar-btn" id="compact-btn" onclick="toggleCompactStage()"
+                title="Compact view — maximise lyrics area"
+                style="margin-left:auto;">⊡</button>
         <button class="ctrl-bar-btn danger" id="live-end-btn" onclick="endShow()">◼ END</button>
       </div>
 
@@ -524,7 +527,7 @@ if ('serviceWorker' in navigator) {
                  padding:16px 20px;width:100%;"
           spellcheck="false"
           oninput="updateCePreview()"
-          placeholder="[G]Here comes the [Em]sun…"></textarea>
+          placeholder="[Verse 1]&#10;[G]Here comes the [Em]sun…&#10;&#10;[Chorus]&#10;[C]Come together"></textarea>
       </div>
 
       <!-- Converter view -->
@@ -683,6 +686,18 @@ Here comes the sun…"></textarea>
           </select>
         </div>
         <div class="form-group">
+          <label>Capo</label>
+          <select id="f-capo">
+            <option value="0">No capo</option>
+            <option value="1">Capo 1</option><option value="2">Capo 2</option>
+            <option value="3">Capo 3</option><option value="4">Capo 4</option>
+            <option value="5">Capo 5</option><option value="6">Capo 6</option>
+            <option value="7">Capo 7</option><option value="8">Capo 8</option>
+            <option value="9">Capo 9</option><option value="10">Capo 10</option>
+            <option value="11">Capo 11</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Tempo (BPM)</label>
           <input id="f-tempo" type="number" min="40" max="250" placeholder="120">
         </div>
@@ -713,7 +728,7 @@ Here comes the sun…"></textarea>
           </button>
         </div>
         <textarea id="f-chords" placeholder="[G]Here comes the [Em]sun [C]doo doo doo [D]doo&#10;[G]Here comes the [Em]sun [C]and I say [D]it's alright" style="min-height:160px;"></textarea>
-        <div class="hint">Each musician can choose to see lyrics, chords, or both. Tabs or chords not in ChordPro? Paste them in the Chords field as-is.</div>
+        <div class="hint">Use [Chord] for chords, [Verse 1] / [Chorus] / [Bridge] etc. for section markers. A bare [Chorus] with no following lines repeats the section.</div>
       </div>
       <div class="form-group">
         <label>Notes / Cues</label>
@@ -1030,6 +1045,7 @@ function openSongModal(id) {
   document.getElementById('f-title').value    = s?.title    || '';
   document.getElementById('f-artist').value   = s?.artist   || '';
   document.getElementById('f-key').value      = s?.song_key || '';
+  document.getElementById('f-capo').value     = s?.capo     || 0;
   document.getElementById('f-tempo').value    = s?.tempo    || '';
   document.getElementById('f-duration').value = s?.duration ? fmtDur(s.duration) : '';
   document.getElementById('f-status').value   = s?.status   || 'active';
@@ -1050,6 +1066,7 @@ async function saveSong() {
     title, status: document.getElementById('f-status').value,
     artist:   document.getElementById('f-artist').value.trim()   || null,
     song_key: document.getElementById('f-key').value             || null,
+    capo:     parseInt(document.getElementById('f-capo').value)   || 0,
     tempo:    parseInt(document.getElementById('f-tempo').value)  || null,
     duration: parseDur(document.getElementById('f-duration').value),
     lyrics:   document.getElementById('f-lyrics').value.trim()   || null,
@@ -1556,6 +1573,7 @@ function applyLiveUI() {
   if (liveEndBtn)   liveEndBtn.style.display   = (live && !rehearActive) ? '' : 'none';
 
   if (live) renderStageCard();
+  applyCompactStage();
 }
 
 async function goLive() {
@@ -1648,6 +1666,245 @@ let lXp      = 0;
 let lScrolling  = false;
 let lScrollTick = null;
 
+
+// ── ChordPro renderer — chord-above-lyrics layout ─────────────
+// ── ChordPro renderer ────────────────────────────────────────
+// Bracket tokens are either chords [G] [Am7] [F#m]
+// or section markers [Verse 1] [Chorus] [Bridge] [Pre-Chorus] [Outro]
+// A bare section reference [Chorus] with no following content
+// renders as a "repeat" cue pointing back to the first occurrence.
+
+const _CHORD_RE = /^[A-G][#b]?(m|maj|min|dim|aug|sus|add|M)?[0-9]*(\/[A-G][#b]?)?$/;
+
+function _isChord(token) {
+  return _CHORD_RE.test(token.trim());
+}
+
+function _isSectionLine(line) {
+  // A line is a section marker line if it is exactly one bracket token
+  // and that token is not a chord name.
+  const m = line.trim().match(/^\[([^\]]+)\]$/);
+  return m ? !_isChord(m[1]) : false;
+}
+
+function _sectionLabel(line) {
+  const m = line.trim().match(/^\[([^\]]+)\]$/);
+  return m ? m[1] : null;
+}
+
+// Pre-pass: collect content for each named section so bare references
+// can show a "play as X" indicator.
+function _buildSectionMap(lines) {
+  const map = {};   // label -> [content lines]
+  let current = null;
+  for (const line of lines) {
+    if (_isSectionLine(line)) {
+      const label = _sectionLabel(line);
+      if (!(label in map)) {
+        map[label] = [];
+        current = label;
+      } else {
+        current = null;  // second occurrence — bare reference
+      }
+    } else if (current !== null) {
+      map[current].push(line);
+    }
+  }
+  return map;
+}
+
+function _renderLines(lines, xpSemitones, mode) {
+  const out = [];
+  for (const line of lines) {
+    // Section marker — skip here, already handled by caller
+    if (_isSectionLine(line)) continue;
+
+    const hasBracket = line.includes('[');
+
+    if (!hasBracket) {
+      if (line.trim() === '') {
+        out.push('<div class="cp-spacer"></div>');
+      } else if (mode === 'lyrics') {
+        out.push('<div class="cp-lyric-only">' + escHtml(line) + '</div>');
+      } else {
+        out.push('<div class="cp-lyric-only">' + escHtml(line) + '</div>');
+      }
+      continue;
+    }
+
+    // Parse chords out of the line
+    const chords = [];
+    let lyric = '', charPos = 0, cursor = 0;
+    while (cursor < line.length) {
+      if (line[cursor] === '[') {
+        const close = line.indexOf(']', cursor);
+        if (close === -1) { lyric += line[cursor++]; charPos++; continue; }
+        const token = line.slice(cursor + 1, close);
+        if (_isChord(token)) {
+          // Apply transposition
+          const name = xpSemitones ? xpChord(token, xpSemitones) : token;
+          chords.push({ pos: charPos, name });
+        } else {
+          // Inline section marker inside a lyric line — treat as lyric text
+          lyric += token;
+          charPos += token.length;
+        }
+        cursor = close + 1;
+      } else {
+        lyric += line[cursor];
+        charPos++;
+        cursor++;
+      }
+    }
+
+    if (mode === 'lyrics') {
+      // Lyrics mode — strip chords, just show lyric text
+      if (lyric.trim() === '') continue;
+      out.push('<div class="cp-lyric-only">' + escHtml(lyric) + '</div>');
+    } else {
+      // Chords mode — build chord row above lyric row
+      let chordRow = '', col = 0;
+      for (const c of chords) {
+        const sp = Math.max(1, c.pos - col);
+        chordRow += ' '.repeat(sp);
+        chordRow += c.name;
+        col = c.pos + Math.max(1, c.name.length);
+      }
+      const hasLyric = lyric.trim().length > 0;
+      if (chords.length === 0 && !hasLyric) continue;
+      out.push(
+        '<div class="cp-row">' +
+          '<div class="cp-chords">' + escHtml(chordRow) + '</div>' +
+          (hasLyric ? '<div class="cp-lyrics">' + escHtml(lyric) + '</div>' : '') +
+        '</div>'
+      );
+    }
+  }
+  return out.join('');
+}
+
+function chordProToHTML(text, xpSemitones) {
+  if (!text) return '';
+  const lines      = text.split('\n');
+  const sectionMap = _buildSectionMap(lines);
+  const out        = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (_isSectionLine(line)) {
+      const label   = _sectionLabel(line);
+      const content = sectionMap[label] || [];
+
+      // Check if this is a bare back-reference (section appeared before)
+      // by scanning forward for content lines
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+
+      if (!hasContent && content.length > 0) {
+        // Bare reference — show a repeat cue + the section content dimmed
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+        out.push('<div class="cp-repeat-content">');
+        out.push(_renderLines(content, xpSemitones, 'chords'));
+        out.push('</div>');
+        i++;
+        // Skip any blank lines following the bare reference
+        while (i < lines.length && lines[i].trim() === '') i++;
+      } else {
+        // First occurrence with content — render section header + lines
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        i++;
+        // Collect and render lines until next section marker
+        const sectionLines = [];
+        while (i < lines.length && !_isSectionLine(lines[i])) {
+          sectionLines.push(lines[i]);
+          i++;
+        }
+        out.push(_renderLines(sectionLines, xpSemitones, 'chords'));
+      }
+    } else {
+      // Line outside any section marker
+      out.push(_renderLines([line], xpSemitones, 'chords'));
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No content for this song.</span>';
+}
+
+function lyricsOnlyHTML(text, xpSemitones) {
+  if (!text) return '';
+  const lines      = text.split('\n');
+  const sectionMap = _buildSectionMap(lines);
+  const out        = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (_isSectionLine(line)) {
+      const label   = _sectionLabel(line);
+      const content = sectionMap[label] || [];
+
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+
+      if (!hasContent && content.length > 0) {
+        // Repeat cue in lyrics mode
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+        out.push('<div class="cp-repeat-content">');
+        out.push(_renderLines(content, xpSemitones, 'lyrics'));
+        out.push('</div>');
+        i++;
+        while (i < lines.length && lines[i].trim() === '') i++;
+      } else {
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        i++;
+        const sectionLines = [];
+        while (i < lines.length && !_isSectionLine(lines[i])) {
+          sectionLines.push(lines[i]);
+          i++;
+        }
+        out.push(_renderLines(sectionLines, xpSemitones, 'lyrics'));
+      }
+    } else {
+      out.push(_renderLines([line], xpSemitones, 'lyrics'));
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No content for this song.</span>';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function lRenderSong() {
   if (!lSong) {
     document.getElementById('l-song-content').innerHTML =
@@ -1665,16 +1922,50 @@ function lRenderSong() {
   if (lSong.tempo)    meta.push(`♩ <b>${lSong.tempo} BPM</b>`);
   document.getElementById('l-song-meta').innerHTML = meta.join(' · ');
 
-  const raw  = lMode === 'lyrics'
-    ? (lSong.lyrics || '')
-    : (lSong.chords || lSong.lyrics || '');
-  const text = xpText(raw, lXp);
-  const html = lMode === 'lyrics'
-    ? text.replace(/\[[^\]]+\]/g, '').replace(/\n/g, '<br>')
-    : text.replace(/\[([^\]]+)\]/g, '<span class="chord">$1</span>').replace(/\n/g, '<br>');
+  const capo   = lSong.capo || 0;
+  const dispXp = lXp - capo;  // fingered = sounding - capo + device xp
 
-  document.getElementById('l-song-content').innerHTML = html ||
-    '<span style="color:var(--dim);font-style:italic">No content added for this song.</span>';
+  const metaEl = document.getElementById('l-song-meta');
+  if (metaEl) {
+    const meta = [];
+    if (lSong.artist)   meta.push(`<b>${esc(lSong.artist)}</b>`);
+    if (lSong.song_key) meta.push(`Key: <b>${esc(lSong.song_key)}</b>`);
+    if (capo)           meta.push(`Capo <b>${capo}</b>`);
+    if (lSong.tempo)    meta.push(`♩ <b>${lSong.tempo} BPM</b>`);
+    metaEl.innerHTML = meta.join(' · ');
+  }
+
+  const el = document.getElementById('l-song-content');
+  if (lMode === 'lyrics') {
+    const raw = lSong.lyrics || lSong.chords || '';
+    el.innerHTML = lyricsOnlyHTML(raw, dispXp) ||
+      '<span class="cp-empty">No content added for this song.</span>';
+  } else {
+    const raw = lSong.chords || lSong.lyrics || '';
+    el.innerHTML = chordProToHTML(raw, dispXp) ||
+      '<span class="cp-empty">No content added for this song.</span>';
+  }
+}
+
+// ── Compact stage mode ────────────────────────────────────────
+let _stageCompact = localStorage.getItem('l_compact') === '1';
+
+function toggleCompactStage() {
+  _stageCompact = !_stageCompact;
+  localStorage.setItem('l_compact', _stageCompact ? '1' : '0');
+  applyCompactStage();
+}
+
+function applyCompactStage() {
+  const panel = document.getElementById('live-panel');
+  const btn   = document.getElementById('compact-btn');
+  if (_stageCompact) {
+    panel.classList.add('compact');
+    if (btn) { btn.style.background = 'var(--amber)'; btn.style.color = '#000'; btn.style.borderColor = 'var(--amber)'; }
+  } else {
+    panel.classList.remove('compact');
+    if (btn) { btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
+  }
 }
 
 function lToggleMode() {
@@ -1895,34 +2186,107 @@ setInterval(_broadcastScroll, 2000);
 // ── Metronome (Web Audio lookahead scheduler) ────────────────
 // Uses AudioContext.currentTime for sub-millisecond precision scheduling
 // that is immune to main-thread jank and background tab throttling.
-let metroOn      = false;
-let metroTimeout = null;
-let metroAudio   = null;
-let metroBpm     = 0;
-let metroEpoch   = 0;   // server_epoch converted to local Date.now() time
-let metroBar     = 4;
+// ── Metronome (continuous audio/wall-clock bridge recalibration) ─────────
+let metroOn         = false;
+let metroBpm        = 0;
+let metroBar        = 4;
+let _metroAc        = null;
+let _metroST        = null;
+let _lastBeat       = -1;
+let _serverEpochMs  = 0;
+const _LOOKAHEAD    = 0.120;
+const _INTERVAL     = 20;
 
-// Lookahead scheduler state
-let _metroSchedTimer = null;
-let _audioEpoch      = 0;   // metroEpoch expressed in AudioContext.currentTime seconds
-
-const LOOKAHEAD_MS   = 100;  // how far ahead to schedule (ms)
-const SCHEDULE_INT   = 25;   // how often the scheduler runs (ms)
-
-function toggleMetro() {
-  metroOn ? stopMetro() : startMetro();
-}
-
-function _getOrCreateAudio() {
-  if (!metroAudio) {
-    try {
-      metroAudio = new (window.AudioContext || window.webkitAudioContext)();
-    } catch(e) { return null; }
+function _getAc() {
+  if (!_metroAc) {
+    try { _metroAc = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
   }
-  // Resume if suspended (required after user gesture on iOS/Safari)
-  if (metroAudio.state === 'suspended') metroAudio.resume();
-  return metroAudio;
+  if (_metroAc && _metroAc.state === 'suspended') {
+    _metroAc.resume().catch(() => {});
+  }
+  // Return the context even if still resuming — currentTime will be 0 briefly
+  // but _audioEpochNow recalibrates every tick so phase stays correct once running
+  return _metroAc || null;
 }
+
+function _audioEpochNow(ac) {
+  return (_serverEpochMs - clockOffset) / 1000 + (ac.currentTime - Date.now() / 1000);
+}
+
+function _metroScheduler() {
+  if (!metroOn) return;
+  const ac = _getAc();
+  // If context exists but hasn't started yet (currentTime still 0), use fallback
+  if (!ac || ac.currentTime < 0.001) { _metroFallback(); return; }
+  const beatSec    = 60 / metroBpm;
+  const nowAudio   = ac.currentTime;
+  const audioEpoch = _audioEpochNow(ac);
+  const horizon    = nowAudio + _LOOKAHEAD;
+  let beat = Math.max(0, Math.floor((nowAudio - audioEpoch) / beatSec));
+  while (true) {
+    const beatTime = audioEpoch + beat * beatSec;
+    if (beatTime > horizon) break;
+    if (beat > _lastBeat) {
+      _lastBeat = beat;
+      const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
+      const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
+      setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown); }, delayMs);
+    }
+    beat++;
+  }
+}
+
+function _metroFallback() {
+  const beatMs     = 60000 / metroBpm;
+  const localEpoch = _serverEpochMs - clockOffset;
+  const beat       = Math.max(0, Math.floor((Date.now() - localEpoch) / beatMs));
+  if (beat > _lastBeat) {
+    _lastBeat = beat;
+    fireFlash(metroBpm, (beat % metroBar + metroBar) % metroBar === 0);
+  }
+}
+
+function _startMetroEngine(bpm, bar, serverEpochMs) {
+  _stopMetroEngine();
+  metroBpm       = bpm;
+  metroBar       = bar || 4;
+  _serverEpochMs = serverEpochMs;
+  metroOn        = true;
+  _lastBeat      = -1;
+  _getAc();
+  _metroST = setInterval(_metroScheduler, _INTERVAL);
+  _metroScheduler();
+}
+
+function _stopMetroEngine() {
+  metroOn = false;
+  clearInterval(_metroST);
+  _metroST  = null;
+  _lastBeat = -1;
+  document.getElementById('metro-flash').classList.remove('beat');
+}
+
+['click','touchstart','keydown'].forEach(ev =>
+  document.addEventListener(ev, () => {
+    if (_metroAc) _metroAc.resume().catch(() => {});
+  }, { passive: true }));
+
+
+function fireFlash(bpm, isDown) {
+  const flash  = document.getElementById('metro-flash');
+  if (!flash) return;
+  const beatMs = 60000 / (bpm || 120);
+  flash.style.background = isDown
+    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
+    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
+  flash.classList.add('beat');
+  setTimeout(() => flash.classList.remove('beat'),
+    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
+}
+
+let metroTimeout = null;
+
+function toggleMetro() { metroOn ? stopMetro() : startMetro(); }
 
 function startMetro() {
   const cur = liveSlSongs[liveState.song_index];
@@ -1933,102 +2297,25 @@ function startMetro() {
     document.getElementById('leader-metro-sub').textContent = 'no BPM';
     return;
   }
-
-  const ac = _getOrCreateAudio();
-
-  // Epoch = right now in server time
   const serverEpoch = serverNow();
-  metroBpm   = bpm;
-  metroEpoch = serverEpoch - clockOffset;  // local ms equivalent
-  metroBar   = 4;
-  metroOn    = true;
-
-  // Express metroEpoch in AudioContext time so we can schedule with ac.currentTime
-  // ac.currentTime is seconds from context creation; Date.now() is ms from unix epoch.
-  // Bridge: audioNow ≈ ac.currentTime, wallNow = Date.now()
-  // audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000
-  if (ac) {
-    _audioEpoch = ac.currentTime + (metroEpoch - Date.now()) / 1000;
-  }
-
+  _startMetroEngine(bpm, 4, serverEpoch);
   if (btn) btn.classList.add('active');
   document.getElementById('leader-metro-sub').textContent = `${bpm} bpm`;
   const rSub = document.getElementById('r-metro-sub');
   if (rSub) rSub.textContent = `${bpm} bpm`;
-  const rBtn2 = document.getElementById('r-metro-btn');
-  if (rBtn2) rBtn2.classList.add('active');
-
-  // Broadcast to musicians
+  const rBtn = document.getElementById('r-metro-btn');
+  if (rBtn) rBtn.classList.add('active');
   if (leaderWs && leaderWs.readyState === 1) {
-    leaderWs.send(JSON.stringify({
-      type: 'metronome_start', bpm, beats_per_bar: 4, server_epoch: serverEpoch,
-    }));
+    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:4, server_epoch:serverEpoch }));
   }
-
-  // Auto-stop
   const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 20;
   clearTimeout(metroTimeout);
   metroTimeout = setTimeout(stopMetro, secs * 1000);
-
-  // Start lookahead scheduler
-  clearInterval(_metroSchedTimer);
-  _metroSchedTimer = setInterval(_metroScheduler, SCHEDULE_INT);
-  _metroScheduler(); // run immediately so beat 0 fires without waiting
-}
-
-// Tracks the highest beat index we have already scheduled a visual flash for
-let _lastScheduledBeat = -1;
-
-function _metroScheduler() {
-  if (!metroOn) return;
-  const ac = metroAudio;
-  if (!ac) {
-    // No AudioContext — fall back to Date.now() scheduling
-    _metroSchedulerFallback();
-    return;
-  }
-
-  const beatSec  = 60 / metroBpm;
-  const nowAudio = ac.currentTime;
-  const horizon  = nowAudio + LOOKAHEAD_MS / 1000;
-
-  // Schedule all beats that fall within the lookahead window
-  let beat = Math.max(0, Math.floor((nowAudio - _audioEpoch) / beatSec));
-  while (true) {
-    const beatTime = _audioEpoch + beat * beatSec;
-    if (beatTime > horizon) break;
-    if (beat > _lastScheduledBeat) {
-      _lastScheduledBeat = beat;
-      const isDown    = beat % metroBar === 0;
-      const delayMs   = Math.max(0, (beatTime - nowAudio) * 1000);
-      // Schedule the visual flash via setTimeout anchored to audio time
-      // The flash itself is visual only so setTimeout is fine here —
-      // a few ms of visual imprecision is imperceptible
-      setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown); }, delayMs);
-    }
-    beat++;
-  }
-}
-
-function _metroSchedulerFallback() {
-  // When AudioContext is unavailable, use epoch-anchored Date.now() scheduling
-  const beatMs = 60000 / metroBpm;
-  const now    = Date.now();
-  const elapsed = now - metroEpoch;
-  const beat   = Math.max(0, Math.floor(elapsed / beatMs));
-  if (beat > _lastScheduledBeat) {
-    _lastScheduledBeat = beat;
-    fireFlash(metroBpm, beat % metroBar === 0);
-  }
 }
 
 function stopMetro() {
-  metroOn = false;
+  _stopMetroEngine();
   clearTimeout(metroTimeout);
-  clearInterval(_metroSchedTimer);
-  _metroSchedTimer    = null;
-  _lastScheduledBeat  = -1;
-  document.getElementById('metro-flash').classList.remove('beat');
   const btn = document.getElementById('l-metro-btn');
   if (btn) btn.classList.remove('active');
   const sub = document.getElementById('leader-metro-sub');
@@ -2037,21 +2324,9 @@ function stopMetro() {
   if (rSub) rSub.textContent = '';
   const rBtn = document.getElementById('r-metro-btn');
   if (rBtn) rBtn.classList.remove('active');
-
   if (leaderWs && leaderWs.readyState === 1) {
     leaderWs.send(JSON.stringify({ type: 'metronome_stop' }));
   }
-}
-
-function fireFlash(bpm, isDown) {
-  const flash  = document.getElementById('metro-flash');
-  const beatMs = 60000 / (bpm || 120);
-  flash.style.background = isDown
-    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
-    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
-  flash.classList.add('beat');
-  setTimeout(() => flash.classList.remove('beat'),
-    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
 }
 
 function restartMetroIfOn() {
@@ -2059,6 +2334,7 @@ function restartMetroIfOn() {
   stopMetro();
   setTimeout(startMetro, 100);
 }
+
 
 // ── Util ──────────────────────────────────────────────────────
 function esc(s) {
@@ -2213,10 +2489,16 @@ function _keyLabel(key) {
   return labels[key] || key;
 }
 
+const _pedalInputId = {
+  next: 'pedal-next-input', prev: 'pedal-prev-input',
+  scrolldown: 'pedal-scrolldown-input', scrollup: 'pedal-scrollup-input',
+};
+
 function startPedalCapture(which) {
   _pedalCapturing = which;
   document.getElementById('pedal-capture-hint').style.display = 'block';
-  const inputId = which === 'next' ? 'pedal-next-input' : 'pedal-prev-input';
+  const inputId = _pedalInputId[which];
+  if (!inputId) return;
   document.getElementById(inputId).value = '';
   document.getElementById(inputId).placeholder = 'Press pedal now…';
 }
@@ -2225,9 +2507,11 @@ function stopPedalCapture() {
   setTimeout(() => {
     _pedalCapturing = null;
     document.getElementById('pedal-capture-hint').style.display = 'none';
-    // Restore placeholder
-    document.getElementById('pedal-next-input').placeholder = 'Click then press pedal…';
-    document.getElementById('pedal-prev-input').placeholder = 'Click then press pedal…';
+    // Restore all placeholders
+    Object.values(_pedalInputId).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.placeholder = 'Click then press pedal…';
+    });
   }, 200);
 }
 
@@ -2243,7 +2527,8 @@ function _capturePedalKey(e) {
     next: 'cmdr_pedal_next', prev: 'cmdr_pedal_prev',
     scrolldown: 'cmdr_pedal_scrolldown', scrollup: 'cmdr_pedal_scrollup'
   }[which];
-  const inputId = `pedal-${which}-input`;
+  const inputId = _pedalInputId[which];
+  if (!inputId) return false;
   if (storageKey) localStorage.setItem(storageKey, key);
   document.getElementById(inputId).value = _keyLabel(key);
   document.getElementById(inputId).blur();
