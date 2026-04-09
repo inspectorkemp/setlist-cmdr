@@ -29,6 +29,9 @@ A Convert button inside the editor accepts the common chords-above-lyrics format
 **CSV import**
 Bulk-import songs from a spreadsheet. Download a template from the Songs toolbar to get the correct column format. Upload your CSV, map each column to the correct field using the column mapper, review the first few rows, and import. Supported fields: Title, Artist, Key, Tempo, Duration, and Status. Lyrics, chords, and notes must be added per song after import.
 
+**File import (PDF and text chord sheets)**
+Import a chord sheet directly from the Songs toolbar using the ▲ Import button. Supported formats: `.pdf`, `.txt`, `.chopro`, `.cho`, `.crd`, `.chordpro`. The server extracts the text, auto-detects the title and artist from the first few lines, and opens a review modal where you can edit the content before creating the song. After import, the song editor opens automatically so you can tidy up the ChordPro. Born-digital PDFs (exported from a word processor or downloaded from a chord site) extract cleanly. Scanned image PDFs contain no extractable text and are not supported.
+
 **Setlists**
 Create and manage multiple setlists. Add songs from your library, drag to reorder, insert section labels between songs such as Opener or Slow Set, and see a running total duration. Rename by clicking the title. Clone any setlist as a starting point. Mark setlists Active or Inactive. Inactive setlists are hidden from the Live Control dropdown. The setlist list itself can be reordered by dragging.
 
@@ -64,8 +67,11 @@ Scheduling uses the Web Audio API where available, which runs in a separate thre
 **Signal messages**
 Send one-tap text alerts to all musician screens during a live show or rehearsal. Eight configurable slots mapped to F1 through F8 keyboard hotkeys. Default signals: RUSHING, DRAGGING, CHORUS, BRIDGE, KEEP GOING, WRAP IT UP, HOLD HERE, EYES ON ME. Labels are editable and saved per device. A large amber banner slides down on every musician screen and dismisses after 3 seconds.
 
-**Bluetooth page turner pedal**
-Pair any Bluetooth page turner with the leader device and assign its keys in Settings. Default mapping is Right Arrow for next song and Left Arrow for previous. Four actions can be assigned independently: Next Song, Prev Song, Scroll Down, and Scroll Up. Three built-in presets cover the most common pedal brands. Scroll Down and Scroll Up move the content area 80% of its visible height per press.
+**Bluetooth page turner pedal — leader**
+Pair any Bluetooth page turner with the leader device and assign its keys in Settings. Four actions can be assigned independently: Next Song, Prev Song, Scroll Down, and Scroll Up. Three built-in presets cover the most common pedal brands: Arrow keys (AirTurn, PageFlip, Donner), Page Up/Down (iRig BlueTurn), and bracket keys. Scroll Down and Scroll Up move the content area 80% of its visible height per press.
+
+**Bluetooth page turner pedal — musician**
+Each musician can assign their own pedal independently via the ⚙ button in the musician header. Four assignable actions: Scroll Down, Scroll Up, Lyrics/Chords toggle, and Auto Scroll toggle. Two presets: Arrow keys and Page Up/Down. Settings are saved per device in the browser.
 
 **Per-musician controls**
 Each musician independently controls: Lyrics/Chords view toggle, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view, including the two-column toggle.
@@ -102,6 +108,8 @@ The leader page and musician page can each be installed to the home screen on iP
 ## Running on your PC
 
 Requires Python 3.9 or newer. Works on Windows, macOS, and Linux.
+
+If you are on Python 3.9 (the default on some older Windows installs), `run.py` automatically selects dependency versions compatible with 3.9. Python 3.10 or newer is recommended and required for the latest FastAPI versions. Download from https://python.org if needed.
 
 **Windows:** double-click `start.bat`, or from a terminal:
 ```
@@ -253,6 +261,7 @@ The leader page and musician page install separately. Each person installs which
 4. Wait on the Standby screen until the leader engages a show or starts a rehearsal
 5. Use the controls bar to adjust: LYRICS/CHORDS toggle, font size, line spacing (≡), two-column layout (⫴), high contrast (◐), transpose (♭/♯), and AUTO scroll. All settings are saved per device.
 6. Tap anywhere in the content area to hide the controls bar and maximise reading space. Tap again to bring it back.
+7. To use a Bluetooth pedal, tap the ⚙ button in the header, pair the pedal via the device OS Bluetooth settings, then assign keys in the Pedal Settings modal.
 
 ---
 
@@ -320,11 +329,34 @@ Lyrics, chords, and notes are not supported by the importer and must be entered 
 
 ---
 
+## File import
+
+Click **▲ Import** in the Songs toolbar and select a file. Supported formats:
+
+| Extension | Notes |
+|---|---|
+| `.pdf` | Born-digital PDFs only. Scanned image PDFs have no extractable text. |
+| `.txt` | Plain text chord sheets. Use the Convert tool to convert to ChordPro. |
+| `.chopro` / `.cho` / `.crd` / `.chordpro` / `.pro` | ChordPro files import directly. |
+
+The server extracts the text and returns a best-guess title and artist based on the first few lines. A preview modal lets you edit the content and choose whether to place it in the Chords or Lyrics field before creating the song. After creation the song editor opens automatically.
+
+If the text is already in ChordPro format (contains `[Chord]` markers), a "ChordPro detected" badge appears and the Chords field is pre-selected. If it's in chords-above-lyrics format, place it in the Chords field and use the Convert button in the fullscreen editor to convert it.
+
+**Pi note:** `pdfplumber` must be installed. It is included in `requirements.txt` and installed automatically by `setup.sh` and `run.py`. On an existing Pi that was set up before this feature was added, run:
+```bash
+source venv/bin/activate && pip install pdfplumber
+```
+
+---
+
 ## Database backup and restore
 
 **From the browser:**
 Download: click the **DB** button in the leader nav bar. The file is named with a timestamp.
 Restore: click the upload **DB** button, select a `.db` file, and confirm. The server validates it, saves a backup of the current database, and reloads.
+
+The database uses versioned schema migrations. On every startup the server checks the current schema version and runs any pending migrations automatically. No manual SQL is required when upgrading. If a migration fails the server prints an error and exits cleanly rather than starting against a partially-migrated database.
 
 **On the Pi:**
 ```bash
