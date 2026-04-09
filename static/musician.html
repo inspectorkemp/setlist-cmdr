@@ -423,6 +423,10 @@ body.hi-contrast #song-content { color:#ffffff; }
     <div class="dot" id="dot"></div>
     <div id="sl-name">Waiting for band leader…</div>
     <div id="pos-badge"></div>
+    <button onclick="openMusicianSettings()"
+            style="background:none;border:none;color:var(--dim);cursor:pointer;
+                   font-size:1rem;padding:4px 6px;flex-shrink:0;"
+            title="Pedal settings">⚙</button>
   </div>
 
   <div id="song-bar" style="display:none">
@@ -970,8 +974,8 @@ function renderSong() {
   const capo   = song.capo || 0;
   const dispXp = xp - capo;
   const meta = [];
-  if (song.artist)   meta.push(`<b>${song.artist}</b>`);
-  if (song.song_key) meta.push(`Key: <b>${song.song_key}</b>`);
+  if (song.artist)   meta.push(`<b>${escHtml(song.artist)}</b>`);
+  if (song.song_key) meta.push(`Key: <b>${escHtml(song.song_key)}</b>`);
   if (capo)          meta.push(`Capo <b>${capo}</b>`);
   if (song.tempo)    meta.push(`♩ <b>${song.tempo} BPM</b>`);
   document.getElementById('song-meta').innerHTML = meta.join(' · ');
@@ -1261,8 +1265,8 @@ function applyRehearsal(s) {
   document.getElementById('rehear-banner').style.display = 'block';
   document.getElementById('song-title').textContent = s.title;
   const meta = [];
-  if (s.artist)   meta.push(`<b>${s.artist}</b>`);
-  if (s.song_key) meta.push(`Key: <b>${s.song_key}</b>`);
+  if (s.artist)   meta.push(`<b>${escHtml(s.artist)}</b>`);
+  if (s.song_key) meta.push(`Key: <b>${escHtml(s.song_key)}</b>`);
   if (s.tempo)    meta.push(`♩ <b>${s.tempo} BPM</b>`);
   document.getElementById('song-meta').innerHTML = meta.join(' · ');
   document.getElementById('song-bar').style.display = 'block';
@@ -1362,6 +1366,135 @@ function setFontSize(pct) {
   }
 })();
 
+// ── Musician pedal settings ──────────────────────────────────
+const _MP_ACTIONS = {
+  scrolldown: 'mp-scrolldown',
+  scrollup:   'mp-scrollup',
+  mode:       'mp-mode',
+  autoscroll: 'mp-autoscroll',
+};
+const _MP_STORE = {
+  scrolldown: 'mp_scrolldown',
+  scrollup:   'mp_scrollup',
+  mode:       'mp_mode',
+  autoscroll: 'mp_autoscroll',
+};
+
+let _mpCapturing = null;
+
+function _mpKeyLabel(key) {
+  const m = { ArrowDown:'▼ Down', ArrowUp:'▲ Up', ArrowRight:'► Right',
+              ArrowLeft:'◄ Left', PageDown:'Page Down', PageUp:'Page Up',
+              ' ':'Space', Enter:'Enter' };
+  return m[key] || key;
+}
+
+function openMusicianSettings() {
+  // Populate current values
+  Object.keys(_MP_ACTIONS).forEach(action => {
+    const saved = localStorage.getItem(_MP_STORE[action]) || '';
+    const el = document.getElementById(_MP_ACTIONS[action]);
+    if (el) el.value = saved ? _mpKeyLabel(saved) : '';
+  });
+  document.getElementById('m-settings-overlay').style.display = 'flex';
+}
+
+function closeMusicianSettings(e) {
+  if (e && e.target.id !== 'm-settings-overlay') return;
+  document.getElementById('m-settings-overlay').style.display = 'none';
+}
+
+function startMPedalCapture(action) {
+  _mpCapturing = action;
+  document.getElementById('mp-capture-hint').style.display = 'block';
+  const el = document.getElementById(_MP_ACTIONS[action]);
+  if (el) { el.value = ''; el.placeholder = 'Press pedal now…'; }
+}
+
+function stopMPedalCapture() {
+  setTimeout(() => {
+    _mpCapturing = null;
+    document.getElementById('mp-capture-hint').style.display = 'none';
+    Object.values(_MP_ACTIONS).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.placeholder = 'Click then press…';
+    });
+  }, 200);
+}
+
+function _captureMPedalKey(e) {
+  if (!_mpCapturing) return false;
+  if (['Shift','Control','Alt','Meta','CapsLock'].includes(e.key)) return false;
+  e.preventDefault(); e.stopPropagation();
+  const action = _mpCapturing;
+  localStorage.setItem(_MP_STORE[action], e.key);
+  const el = document.getElementById(_MP_ACTIONS[action]);
+  if (el) el.value = _mpKeyLabel(e.key);
+  document.getElementById(el.id).blur();
+  return true;
+}
+
+function setMPedalPreset(preset) {
+  const presets = {
+    arrows:     { scrolldown:'ArrowDown', scrollup:'ArrowUp',
+                  mode:'ArrowRight', autoscroll:'' },
+    pageupdown: { scrolldown:'PageDown', scrollup:'PageUp',
+                  mode:'', autoscroll:'' },
+  };
+  const p = presets[preset];
+  if (!p) return;
+  Object.keys(p).forEach(action => {
+    localStorage.setItem(_MP_STORE[action], p[action]);
+    const el = document.getElementById(_MP_ACTIONS[action]);
+    if (el) el.value = p[action] ? _mpKeyLabel(p[action]) : '';
+  });
+}
+
+function resetMPedal() {
+  Object.keys(_MP_STORE).forEach(action => {
+    localStorage.removeItem(_MP_STORE[action]);
+    const el = document.getElementById(_MP_ACTIONS[action]);
+    if (el) el.value = '';
+  });
+}
+
+// ── Pedal keydown handler ─────────────────────────────────────
+document.addEventListener('keydown', e => {
+  // Let capture handler intercept first
+  if (_captureMPedalKey(e)) return;
+
+  // Ignore when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  const scrollDownKey = localStorage.getItem(_MP_STORE.scrolldown) || '';
+  const scrollUpKey   = localStorage.getItem(_MP_STORE.scrollup)   || '';
+  const modeKey       = localStorage.getItem(_MP_STORE.mode)       || '';
+  const autoScrollKey = localStorage.getItem(_MP_STORE.autoscroll) || '';
+
+  if (scrollDownKey && e.key === scrollDownKey) {
+    e.preventDefault();
+    const wrap = document.getElementById('content-wrap');
+    if (wrap) wrap.scrollBy({ top: Math.floor(wrap.clientHeight * 0.8), behavior: 'smooth' });
+    return;
+  }
+  if (scrollUpKey && e.key === scrollUpKey) {
+    e.preventDefault();
+    const wrap = document.getElementById('content-wrap');
+    if (wrap) wrap.scrollBy({ top: -Math.floor(wrap.clientHeight * 0.8), behavior: 'smooth' });
+    return;
+  }
+  if (modeKey && e.key === modeKey) {
+    e.preventDefault();
+    toggleMode();
+    return;
+  }
+  if (autoScrollKey && e.key === autoScrollKey) {
+    e.preventDefault();
+    toggleScroll();
+    return;
+  }
+});
+
 // ── Signal overlay ────────────────────────────────────────────
 let signalTimer = null;
 function showSignal(text) {
@@ -1383,5 +1516,93 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<!-- ── Musician settings modal ─────────────────────────────── -->
+<div id="m-settings-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);
+            z-index:600;align-items:center;justify-content:center;padding:16px;"
+     onclick="closeMusicianSettings(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);
+       border-radius:16px;width:100%;max-width:460px;overflow:hidden;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:10px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;
+           letter-spacing:2px;color:var(--amber);flex:1;">PEDAL SETTINGS</div>
+      <button onclick="closeMusicianSettings()"
+              style="background:none;border:none;color:var(--dim);
+                     cursor:pointer;font-size:1rem;">✕</button>
+    </div>
+    <div style="padding:16px 18px;">
+      <p style="font-size:.78rem;color:var(--dim);line-height:1.6;margin-bottom:14px;">
+        Pair your Bluetooth pedal via the device OS settings, then assign its keys below.
+        Click a field and press the pedal button to capture it.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:4px;
+                 text-transform:uppercase;letter-spacing:1px;">Scroll Down</label>
+          <input id="mp-scrolldown" readonly placeholder="Click then press…"
+                 style="background:var(--card);border:1px solid var(--border);
+                        border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;
+                        font-size:.85rem;padding:7px 10px;width:100%;outline:none;
+                        cursor:pointer;text-align:center;"
+                 onfocus="startMPedalCapture('scrolldown')"
+                 onblur="stopMPedalCapture()">
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:4px;
+                 text-transform:uppercase;letter-spacing:1px;">Scroll Up</label>
+          <input id="mp-scrollup" readonly placeholder="Click then press…"
+                 style="background:var(--card);border:1px solid var(--border);
+                        border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;
+                        font-size:.85rem;padding:7px 10px;width:100%;outline:none;
+                        cursor:pointer;text-align:center;"
+                 onfocus="startMPedalCapture('scrollup')"
+                 onblur="stopMPedalCapture()">
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:4px;
+                 text-transform:uppercase;letter-spacing:1px;">Lyrics / Chords</label>
+          <input id="mp-mode" readonly placeholder="Click then press…"
+                 style="background:var(--card);border:1px solid var(--border);
+                        border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;
+                        font-size:.85rem;padding:7px 10px;width:100%;outline:none;
+                        cursor:pointer;text-align:center;"
+                 onfocus="startMPedalCapture('mode')"
+                 onblur="stopMPedalCapture()">
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:4px;
+                 text-transform:uppercase;letter-spacing:1px;">Auto Scroll</label>
+          <input id="mp-autoscroll" readonly placeholder="Click then press…"
+                 style="background:var(--card);border:1px solid var(--border);
+                        border-radius:8px;color:var(--text);font-family:'DM Mono',monospace;
+                        font-size:.85rem;padding:7px 10px;width:100%;outline:none;
+                        cursor:pointer;text-align:center;"
+                 onfocus="startMPedalCapture('autoscroll')"
+                 onblur="stopMPedalCapture()">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <button onclick="setMPedalPreset('arrows')"
+                style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                       color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif;
+                       font-size:.75rem;padding:5px 12px;">◄► Arrows</button>
+        <button onclick="setMPedalPreset('pageupdown')"
+                style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                       color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif;
+                       font-size:.75rem;padding:5px 12px;">PgUp/PgDn</button>
+        <button onclick="resetMPedal()"
+                style="background:var(--card);border:1px solid var(--red);border-radius:8px;
+                       color:var(--red);cursor:pointer;font-family:'DM Sans',sans-serif;
+                       font-size:.75rem;padding:5px 12px;margin-left:auto;">Reset</button>
+      </div>
+      <div id="mp-capture-hint"
+           style="font-size:.75rem;color:var(--amber);display:none;">
+        Listening… press the pedal button now
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
