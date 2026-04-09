@@ -285,6 +285,7 @@ body.portrait #signal-banner {
 }
 #metro-flash.beat { opacity:1; transition:none; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -294,6 +295,14 @@ body.portrait #signal-banner {
 <div id="standby">
   <img src="/static/img/logo_large.png" alt="Setlist CMDR">
   <div class="label">STANDBY</div>
+  <div id="qr-wrap" style="margin-top:clamp(24px,3vh,48px);display:flex;
+       flex-direction:column;align-items:center;gap:12px;">
+    <canvas id="qr-canvas"></canvas>
+    <div style="font-family:'DM Mono',monospace;font-size:clamp(.7rem,1.4vw,1rem);
+         color:var(--dim);letter-spacing:1px;">SCAN TO CONFIGURE MONITOR</div>
+    <div id="qr-url" style="font-family:'DM Mono',monospace;
+         font-size:clamp(.6rem,1.1vw,.85rem);color:var(--dim);opacity:.6;"></div>
+  </div>
 </div>
 
 <!-- Live stage -->
@@ -321,7 +330,9 @@ body.portrait #signal-banner {
 // ?mode=chords  → show chords view (default: lyrics)
 // ?fontscale=N  → multiply base font by N (e.g. 1.4 for even larger)
 const params    = new URLSearchParams(location.search);
-const viewMode  = params.get('mode') === 'chords' ? 'chords' : 'lyrics';
+let viewMode    = params.get('mode') === 'chords' ? 'chords' : 'lyrics';
+// _monitorViewMode lets applyMonitorConfig override viewMode at runtime
+let _monitorViewMode = viewMode;
 const fontScale = parseFloat(params.get('fontscale')) || 1;
 const portrait  = params.get('portrait') === '1';
 const fitMode   = params.get('fit') === '1';
@@ -343,7 +354,7 @@ if (fontScale !== 1) {
 
 // Auto-fit: after rendering, shrink font until content fits or hits minimum
 function autoFitContent() {
-  if (!fitMode) return;
+  if (!document.body.classList.contains('fit')) return;
   const wrap    = document.getElementById('content-wrap');
   const content = document.getElementById('content');
   if (!wrap || !content) return;
@@ -816,6 +827,78 @@ function splitToColumns(html) {
     '</div><div class="col-half">' + col2 + '</div></div>';
 }
 
+
+// ── Monitor config (pushed from leader or setup page) ────────
+function applyMonitorConfig(msg) {
+  // Extract fields explicitly — avoids spread/destructuring issues
+  const mode      = msg.mode      !== undefined ? msg.mode      : viewMode;
+  const cols      = msg.cols      !== undefined ? !!msg.cols     : document.body.classList.contains('two-col');
+  const fit       = msg.fit       !== undefined ? !!msg.fit      : document.body.classList.contains('fit');
+  const hc        = msg.hc        !== undefined ? !!msg.hc       : document.body.classList.contains('hi-contrast');
+  const fontscale = msg.fontscale !== undefined ? parseFloat(msg.fontscale) || 1.0 : 1.0;
+
+  // Persist (without the type field)
+  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, fontscale }));
+
+  // Apply mode
+  viewMode = mode;
+  _monitorViewMode = mode;
+
+  // Body class toggles
+  document.body.classList.toggle('two-col',     cols);
+  document.body.classList.toggle('fit',         fit);
+  document.body.classList.toggle('hi-contrast', hc);
+
+  // Font scale
+  const el = document.getElementById('content');
+  if (el) {
+    if (fontscale !== 1.0) {
+      const base = portrait
+        ? (fit ? 'clamp(1rem,3.2vw,4rem)' : 'clamp(1.4rem,4.2vw,5rem)')
+        : (fit ? 'clamp(1rem,2.4vw,2.6rem)' : 'clamp(1.6rem,3.2vw,3.2rem)');
+      el.style.fontSize = 'calc(' + base + ' * ' + fontscale + ')';
+    } else {
+      el.style.fontSize = '';
+    }
+  }
+
+  // Re-render current song with updated settings
+  if (song) renderSong();
+}
+
+// ── QR code for setup page ────────────────────────────────────
+function initQR() {
+  const setupUrl = location.origin + '/monitor/setup';
+  document.getElementById('qr-url').textContent = setupUrl;
+  const canvas = document.getElementById('qr-canvas');
+  const size = Math.min(Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.18), 220);
+  canvas.width = size;
+  canvas.height = size;
+  try {
+    new QRCode(canvas, {
+      text:          setupUrl,
+      width:         size,
+      height:        size,
+      colorDark:     '#e8e8f0',
+      colorLight:    '#0d0d12',
+      correctLevel:  QRCode.CorrectLevel.M,
+    });
+  } catch (e) {
+    // QRCode lib not yet loaded — try once more after a tick
+    setTimeout(initQR, 500);
+  }
+}
+
+// Load saved config on startup
+(function loadSavedMonitorCfg() {
+  try {
+    const saved = localStorage.getItem('monitor_cfg');
+    if (saved) applyMonitorConfig(JSON.parse(saved));
+  } catch {}
+  // Generate QR after a brief delay to let QRCode lib load
+  setTimeout(initQR, 300);
+})();
+
 // ── Render ────────────────────────────────────────────────────
 function renderSong() {
   if (!song) return;
@@ -829,7 +912,8 @@ function renderSong() {
   document.getElementById('song-meta').textContent = parts.join('  ·  ');
   const el = document.getElementById('content');
   let html;
-  if (viewMode === 'chords') {
+  viewMode = _monitorViewMode;
+    if (viewMode === 'chords') {
     const raw = song.chords || song.lyrics || '';
     html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
@@ -922,6 +1006,7 @@ function connect() {
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'live_update')      applyLive(msg);
+    if (msg.type === 'monitor_config')   applyMonitorConfig(msg);
     if (msg.type === 'sync_reply')       handleSyncReply(msg);
     if (msg.type === 'rehearsal_update') {
       rehearsalOn = true;
