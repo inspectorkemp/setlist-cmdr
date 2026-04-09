@@ -913,6 +913,15 @@ metro_state = {
     "server_epoch": None,   # ms timestamp of beat 0
 }
 
+# Monitor display preferences — persisted so reconnects get current state
+monitor_config = {
+    "mode":      "chords",
+    "cols":      False,
+    "fit":       False,
+    "hc":        False,
+    "fontscale": 1.0,
+}
+
 @app.put("/api/metro")
 async def set_metro_stub():
     return {"ok": True}
@@ -928,6 +937,8 @@ async def ws_endpoint(websocket: WebSocket):
     # Send current metro state to newly connected client
     if metro_state["on"]:
         await websocket.send_json({"type": "metronome_start", **metro_state})
+    # Send current monitor config on connect
+    await websocket.send_json({"type": "monitor_config", **monitor_config})
     await manager.broadcast_roster()
     try:
         while True:
@@ -973,6 +984,15 @@ async def ws_endpoint(websocket: WebSocket):
                             "type": "transpose_update",
                             "xp":   msg.get("xp", 0),
                         })
+                    elif msg.get("type") == "monitor_config":
+                        monitor_config.update({
+                            "mode":      msg.get("mode",      monitor_config["mode"]),
+                            "cols":      bool(msg.get("cols",      monitor_config["cols"])),
+                            "fit":       bool(msg.get("fit",       monitor_config["fit"])),
+                            "hc":        bool(msg.get("hc",        monitor_config["hc"])),
+                            "fontscale": float(msg.get("fontscale", monitor_config["fontscale"])),
+                        })
+                        await manager.broadcast({"type": "monitor_config", **monitor_config})
                 except Exception:
                     pass
             elif data.startswith("name:"):
@@ -1010,6 +1030,12 @@ def _inject_build(html: str) -> str:
     meta = f'<meta charset="UTF-8">\n<meta name="build-id" content="{BUILD_ID}">'
     html = html.replace('<meta charset="UTF-8">', meta)
     return html
+
+@app.get("/monitor/setup")
+def monitor_setup():
+    r = FileResponse("static/monitor-setup.html")
+    r.headers["Cache-Control"] = "no-store"
+    return r
 
 @app.get("/monitor")
 def monitor():
