@@ -467,6 +467,55 @@ if ('serviceWorker' in navigator) {
         </div>
       </div>
 
+      <!-- Monitor -->
+      <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+        <label style="display:block;font-size:.72rem;color:var(--dim);
+               text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">
+          Confidence Monitor
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div>
+            <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;">View mode</label>
+            <select id="mon-mode"
+                    style="width:100%;background:var(--card);border:1px solid var(--border);
+                           border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;
+                           font-size:.85rem;padding:7px 10px;outline:none;">
+              <option value="chords">Chords</option>
+              <option value="lyrics">Lyrics</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;">Font scale</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="range" id="mon-fontscale" min="0.5" max="2.0" step="0.05" value="1.0"
+                     oninput="document.getElementById('mon-fs-val').textContent=parseFloat(this.value).toFixed(1)+'x'"
+                     style="flex:1;accent-color:var(--amber);">
+              <span id="mon-fs-val"
+                    style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--amber);min-width:32px;">1.0x</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
+                 background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+            <input type="checkbox" id="mon-cols" style="accent-color:var(--amber);"> Two columns
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
+                 background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+            <input type="checkbox" id="mon-fit" style="accent-color:var(--amber);"> Fit mode
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
+                 background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+            <input type="checkbox" id="mon-hc" style="accent-color:var(--amber);"> High contrast
+          </label>
+        </div>
+        <button class="btn primary" onclick="pushMonitorConfig()" style="width:100%;">
+          PUSH TO MONITOR
+        </button>
+        <div id="mon-push-status"
+             style="font-size:.75rem;color:var(--dim);text-align:center;margin-top:6px;min-height:1em;"></div>
+      </div>
+
       <!-- Lock -->
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn danger" onclick="logout()" style="width:100%;">
@@ -2249,6 +2298,7 @@ let leaderWs = null;
       const msg = JSON.parse(e.data);
       if (msg.type === 'roster_update') updateMusicianCount(msg.count, msg.musicians);
       if (msg.type === 'sync_reply')    handleSyncReply(msg);
+      if (msg.type === 'monitor_config') _handleLeaderMonitorConfig(msg);
     } catch {}
   };
   ws.onclose = () => { leaderWs = null; setTimeout(connectLeaderWS, 3000); };
@@ -2599,6 +2649,15 @@ function openSettingsModal() {
     _keyLabel(localStorage.getItem('cmdr_pedal_scrolldown') || '');
   document.getElementById('pedal-scrollup-input').value =
     _keyLabel(localStorage.getItem('cmdr_pedal_scrollup') || '');
+  // Populate monitor fields
+  const mc = _lastMonitorConfig;
+  document.getElementById('mon-mode').value     = mc.mode      || 'chords';
+  document.getElementById('mon-cols').checked   = !!mc.cols;
+  document.getElementById('mon-fit').checked    = !!mc.fit;
+  document.getElementById('mon-hc').checked     = !!mc.hc;
+  const fs = parseFloat(mc.fontscale) || 1.0;
+  document.getElementById('mon-fontscale').value = fs;
+  document.getElementById('mon-fs-val').textContent = fs.toFixed(1) + 'x';
 }
 
 // ── Pedal key capture ─────────────────────────────────────────
@@ -2688,6 +2747,36 @@ function resetPedal() {
   document.getElementById('pedal-prev-input').value       = _keyLabel('ArrowLeft');
   document.getElementById('pedal-scrolldown-input').value = '';
   document.getElementById('pedal-scrollup-input').value   = '';
+}
+
+// ── Monitor remote config ─────────────────────────────────────
+let _lastMonitorConfig = { mode:'chords', cols:false, fit:false, hc:false, fontscale:1.0 };
+
+function pushMonitorConfig() {
+  const cfg = {
+    type:      'monitor_config',
+    mode:      document.getElementById('mon-mode').value,
+    cols:      document.getElementById('mon-cols').checked,
+    fit:       document.getElementById('mon-fit').checked,
+    hc:        document.getElementById('mon-hc').checked,
+    fontscale: parseFloat(document.getElementById('mon-fontscale').value),
+  };
+  if (!leaderWs || leaderWs.readyState !== 1) {
+    const el = document.getElementById('mon-push-status');
+    el.textContent = 'Not connected';
+    el.style.color = 'var(--red)';
+    return;
+  }
+  leaderWs.send(JSON.stringify(cfg));
+  _lastMonitorConfig = cfg;
+  const el = document.getElementById('mon-push-status');
+  el.textContent = 'Pushed';
+  el.style.color = 'var(--green)';
+  setTimeout(() => { el.textContent = ''; el.style.color = ''; }, 2500);
+}
+
+function _handleLeaderMonitorConfig(cfg) {
+  _lastMonitorConfig = cfg;
 }
 
 function closeSettingsModal(e) {
