@@ -247,11 +247,16 @@ html, body {
 
 #l-next-bar { background:var(--bg); border-bottom:1px solid var(--border); padding:var(--sp-xs) var(--sp-md); font-size:var(--fs-xs); color:var(--dim); display:flex; align-items:center; gap:var(--sp-sm); flex-shrink:0; }
 
-#l-content-wrap { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+#l-content-wrap { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
 #l-content-wrap::-webkit-scrollbar { width:4px; }
 #l-content-wrap::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
-#l-song-content { font-family:'DM Mono',monospace; font-size:clamp(1rem,2.2vw,1.4rem); line-height:2; white-space:pre-wrap; color:var(--text); padding:var(--sp-md) var(--sp-lg) 80px; max-width:960px; margin:0 auto; }
-#l-song-content .chord { color:var(--amber); font-weight:500; font-size:.82em; position:relative; top:-.3em; margin:0 1px; }
+#l-song-content { font-family:'DM Mono',monospace; font-size:clamp(1rem,2.2vw,1.4rem); line-height:1.5; color:var(--text); padding:var(--sp-md) var(--sp-md) 80px; overflow-x:hidden; }
+#l-song-content .cp-row { margin-bottom:.1em; }
+#l-song-content .cp-chords { color:var(--amber); font-weight:600; line-height:1.4; white-space:pre-wrap; word-break:break-word; min-height:1.4em; }
+#l-song-content .cp-lyrics { white-space:pre-wrap; word-break:break-word; line-height:1.5; }
+#l-song-content .cp-lyric-only { white-space:pre-wrap; word-break:break-word; line-height:1.5; margin-bottom:.1em; }
+#l-song-content .cp-spacer { height:0.8em; }
+#l-song-content .cp-empty { color:var(--dim); font-style:italic; white-space:normal; }
 
 #l-controls { background:var(--surface); border-top:1px solid var(--border); padding:var(--sp-sm); display:flex; align-items:center; gap:var(--sp-sm); flex-shrink:0; flex-wrap:wrap; }
 .l-ctrl { background:var(--border); border:none; border-radius:10px; color:var(--text); cursor:pointer; font-family:'DM Sans',sans-serif; font-size:var(--fs-sm); font-weight:600; padding:clamp(8px,1vh,10px) clamp(10px,1.5vw,14px); transition:background .15s; flex-shrink:0; line-height:1; }
@@ -316,7 +321,7 @@ html, body {
 
 /* ── Wide (≥ 1200px) ─────────────────────────────────────────── */
 @media (min-width: 1200px) {
-  #l-song-content { font-size:clamp(1.15rem,1.6vw,1.6rem); padding:var(--sp-lg) clamp(32px,4vw,60px) 100px; max-width:1100px; }
+  #l-song-content { font-size:clamp(1.15rem,1.6vw,1.6rem); padding:var(--sp-md) var(--sp-md) 100px; }
   .list-area { padding:var(--sp-md) var(--sp-lg); }
 }
 
@@ -609,3 +614,80 @@ body[data-mode="ipad"] #m-font-slider::-webkit-slider-thumb { width:22px; height
 .ctrl-bar-btn.pedal-flash {
   animation: pedal-flash 0.3s ease-out;
 }
+
+
+/* ── ChordPro section markers ────────────────────────────────── */
+.cp-section {
+  display:flex; align-items:center; gap:10px;
+  margin:0.9em 0 0.3em;
+  padding-bottom:0.2em;
+  border-bottom:1px solid var(--border);
+}
+.cp-section:first-child { margin-top:0; }
+.cp-section-label {
+  font-family:'Bebas Neue', sans-serif;
+  font-size:0.95em; letter-spacing:2px;
+  color:var(--amber); flex-shrink:0;
+}
+.cp-section-ref {
+  display:flex; align-items:center; gap:10px;
+  margin:0.9em 0 0.3em;
+  padding-bottom:0.2em;
+  border-bottom:1px dashed var(--border);
+}
+.cp-section-ref .cp-section-label { color:var(--dim); }
+.cp-section-repeat {
+  font-size:0.72em; color:var(--dim);
+  font-family:'DM Mono', monospace; letter-spacing:1px;
+}
+.cp-repeat-content {
+  opacity:0.45;
+}
+
+/* ── Compact stage mode ───────────────────────────────────────
+   Toggled by the ⊡ button in ctrl-bar during live/rehearsal.
+   Maximises content area by shrinking all non-content chrome.  */
+#live-panel.compact #leader-ctrl-bar {
+  padding:2px var(--sp-sm);
+}
+#live-panel.compact .ctrl-bar-btn {
+  padding:3px 7px; font-size:.72rem;
+}
+#live-panel.compact #l-song-bar {
+  padding:3px var(--sp-sm);
+}
+#live-panel.compact #l-song-title {
+  font-size:clamp(1rem,3vw,1.6rem);
+}
+#live-panel.compact #l-song-meta {
+  display:none;
+}
+#live-panel.compact #l-next-bar {
+  padding:1px var(--sp-sm); font-size:.65rem;
+}
+#live-panel.compact #l-controls {
+  padding:3px var(--sp-sm); gap:4px;
+}
+#live-panel.compact .l-ctrl {
+  padding:5px 9px; font-size:.75rem;
+}
+#live-panel.compact #l-xp-display {
+  font-size:.78rem;
+}
+#live-panel.compact #signal-bar {
+  padding:3px var(--sp-sm); gap:4px;
+}
+#live-panel.compact .sig-btn {
+  padding:3px 8px; font-size:.7rem; min-width:56px;
+}
+#live-panel.compact .sig-key {
+  font-size:.55rem;
+}
+#live-panel.compact .sig-label {
+  font-size:.68rem;
+}
+/* ipad compact — still touch-friendly but tighter */
+body[data-mode="ipad"] #live-panel.compact .ctrl-bar-btn { min-height:36px; padding:5px 10px; font-size:.82rem; }
+body[data-mode="ipad"] #live-panel.compact .l-ctrl        { min-height:40px; padding:7px 12px; font-size:.85rem; }
+body[data-mode="ipad"] #live-panel.compact .sig-btn        { min-height:40px; padding:5px 10px; }
+body[data-mode="ipad"] #live-panel.compact #l-song-title   { font-size:clamp(1.4rem,4vw,2.4rem); }
