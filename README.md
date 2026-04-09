@@ -44,6 +44,10 @@ Click Rehearse on any song in the Songs tab to push that song to all musician sc
 **Confidence monitor**
 A dedicated full-screen display page at `/monitor` designed for a floor wedge or large display viewed from several feet away. Shows the current song title and key in very large type, followed by the full lyrics or chords, with a Next ribbon at the bottom. The monitor tracks the leader's scroll position in real time and reflects transpose changes immediately. No controls, no header chrome.
 
+The monitor standby screen shows a QR code linking to `/monitor/setup` — a mobile-friendly settings page you can open on your phone to configure the display without touching the TV or editing URLs. Scan it, adjust the toggles, tap Apply, and the monitor updates instantly.
+
+The leader can also push monitor settings remotely from the Settings modal without leaving the leader view.
+
 URL parameters for the monitor:
 
 | Parameter | Values | Effect |
@@ -162,6 +166,16 @@ Open the leader interface at `http://<pi-ip>:8000/leader` and the musician page 
 ## Confidence monitor setup
 
 Open `http://<pi-ip>:8000/monitor` on any browser connected to the same network.
+
+**Configuring the monitor display** — three ways, no SSH required:
+
+1. **QR code (easiest):** When no show is active the monitor standby screen shows a QR code. Scan it on your phone, adjust the settings, tap Apply. The monitor updates immediately and remembers the settings across reboots.
+
+2. **Leader remote push:** Open Settings in the leader nav bar, scroll to the Confidence Monitor section, adjust the toggles, and click Push to Monitor. Takes effect instantly on all connected monitors.
+
+3. **Setup page directly:** Open `http://<pi-ip>:8000/monitor/setup` in any browser on the same network.
+
+**Kiosk setup for a dedicated Pi:
 
 For a dedicated floor wedge Pi running Chromium in kiosk mode, add a file at `/etc/xdg/autostart/monitor.desktop`:
 
