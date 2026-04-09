@@ -258,6 +258,9 @@ html, body {
 #l-song-content .cp-spacer { height:0.8em; }
 #l-song-content .cp-empty { color:var(--dim); font-style:italic; white-space:normal; }
 
+.col-split { display:flex; gap:1.5em; align-items:flex-start; }
+.col-half  { flex:1; min-width:0; }
+
 #l-controls { background:var(--surface); border-top:1px solid var(--border); padding:var(--sp-sm); display:flex; align-items:center; gap:var(--sp-sm); flex-shrink:0; flex-wrap:wrap; }
 .l-ctrl { background:var(--border); border:none; border-radius:10px; color:var(--text); cursor:pointer; font-family:'DM Sans',sans-serif; font-size:var(--fs-sm); font-weight:600; padding:clamp(8px,1vh,10px) clamp(10px,1.5vw,14px); transition:background .15s; flex-shrink:0; line-height:1; }
 .l-ctrl.active { background:var(--amber); color:#000; }
