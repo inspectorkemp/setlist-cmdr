@@ -54,6 +54,7 @@ def init_db():
             title       TEXT    NOT NULL,
             artist      TEXT,
             song_key    TEXT,
+            capo        INTEGER DEFAULT 0,
             tempo       INTEGER,
             duration    INTEGER,
             status      TEXT DEFAULT 'active',
@@ -102,6 +103,12 @@ def init_db():
         pass
     try:
         conn.execute("ALTER TABLE setlists ADD COLUMN position INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+    # capo column — migrate existing databases
+    try:
+        conn.execute("ALTER TABLE songs ADD COLUMN capo INTEGER DEFAULT 0")
         conn.commit()
     except Exception:
         pass
@@ -377,6 +384,7 @@ class SongIn(BaseModel):
     title:    str
     artist:   Optional[str] = None
     song_key: Optional[str] = None
+    capo:     Optional[int] = 0
     tempo:    Optional[int] = None
     duration: Optional[int] = None
     status:   str = "active"
@@ -497,9 +505,9 @@ def list_songs(status: Optional[str] = None):
 def create_song(song: SongIn):
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO songs (title,artist,song_key,tempo,duration,status,lyrics,chords,notes)"
-        " VALUES (?,?,?,?,?,?,?,?,?)",
-        (song.title, song.artist, song.song_key, song.tempo, song.duration,
+        "INSERT INTO songs (title,artist,song_key,capo,tempo,duration,status,lyrics,chords,notes)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo, song.duration,
          song.status, song.lyrics, song.chords, song.notes)
     )
     conn.commit()
@@ -520,9 +528,9 @@ def get_song(song_id: int):
 def update_song(song_id: int, song: SongIn):
     conn = get_db()
     conn.execute(
-        "UPDATE songs SET title=?,artist=?,song_key=?,tempo=?,duration=?,status=?,"
+        "UPDATE songs SET title=?,artist=?,song_key=?,capo=?,tempo=?,duration=?,status=?,"
         "lyrics=?,chords=?,notes=? WHERE id=?",
-        (song.title, song.artist, song.song_key, song.tempo, song.duration,
+        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo, song.duration,
          song.status, song.lyrics, song.chords, song.notes, song_id)
     )
     conn.commit()
