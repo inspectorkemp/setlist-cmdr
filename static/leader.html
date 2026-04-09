@@ -165,8 +165,10 @@ if ('serviceWorker' in navigator) {
       </select>
       <div class="spacer"></div>
       <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(event)">
+      <input type="file" id="import-file-input" accept=".pdf,.txt,.chopro,.cho,.crd,.chordpro,.pro" style="display:none" onchange="handleImportFile(event)">
       <button class="btn" onclick="downloadCsvTemplate()" title="Download a blank template CSV">▼ Template</button>
       <button class="btn" onclick="document.getElementById('csv-file-input').click()">▲ CSV</button>
+      <button class="btn" onclick="document.getElementById('import-file-input').click()" title="Import PDF or text chord sheet">▲ Import</button>
       <button class="btn primary" onclick="openSongModal(null)">+ New Song</button>
     </div>
     <div class="list-area" id="song-list"></div>
@@ -584,6 +586,82 @@ Here comes the sun…"></textarea>
 </div>
 
 </div><!-- /shell -->
+
+<!-- ── File Import Modal ─────────────────────────────────────── -->
+<div id="import-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);
+            z-index:600;align-items:flex-start;justify-content:center;
+            padding:24px 16px;overflow-y:auto;"
+     onclick="closeImportModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);
+       border-radius:16px;width:100%;max-width:700px;">
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:12px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;
+           letter-spacing:2px;color:var(--amber);flex:1;">IMPORT SONG</div>
+      <div id="import-filename" style="font-family:'DM Mono',monospace;
+           font-size:.75rem;color:var(--dim);"></div>
+      <button onclick="closeImportModal()"
+              style="background:none;border:none;color:var(--dim);
+                     cursor:pointer;font-size:1.1rem;padding:2px 6px;">✕</button>
+    </div>
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border);
+         display:flex;flex-wrap:wrap;gap:12px;">
+      <div style="flex:2;min-width:160px;">
+        <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;
+               text-transform:uppercase;letter-spacing:1px;">Title *</label>
+        <input id="import-title" type="text" placeholder="Song title"
+               style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                      color:var(--text);font-family:'DM Sans',sans-serif;font-size:.9rem;
+                      padding:8px 12px;width:100%;outline:none;">
+      </div>
+      <div style="flex:1.5;min-width:120px;">
+        <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;
+               text-transform:uppercase;letter-spacing:1px;">Artist</label>
+        <input id="import-artist" type="text" placeholder="Original artist"
+               style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                      color:var(--text);font-family:'DM Sans',sans-serif;font-size:.9rem;
+                      padding:8px 12px;width:100%;outline:none;">
+      </div>
+    </div>
+    <div style="padding:12px 22px;border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <div style="font-size:.75rem;color:var(--dim);">Place text in:</div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;">
+        <input type="radio" name="import-dest" value="chords" checked id="import-dest-chords">
+        Chords field
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;">
+        <input type="radio" name="import-dest" value="lyrics" id="import-dest-lyrics">
+        Lyrics field
+      </label>
+      <div id="import-chordpro-badge"
+           style="display:none;background:var(--amber-glow);border:1px solid var(--amber);
+                  border-radius:6px;padding:2px 10px;font-size:.72rem;color:var(--amber);">
+        ChordPro detected
+      </div>
+    </div>
+    <div style="padding:12px 22px;border-bottom:1px solid var(--border);">
+      <div style="font-size:.7rem;color:var(--dim);text-transform:uppercase;
+           letter-spacing:1px;margin-bottom:8px;">
+        Preview
+        <span id="import-line-count" style="font-weight:400;margin-left:6px;"></span>
+      </div>
+      <textarea id="import-preview"
+                style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                       color:var(--text);font-family:'DM Mono',monospace;font-size:.78rem;
+                       line-height:1.6;padding:10px 12px;width:100%;min-height:260px;
+                       resize:vertical;outline:none;"
+                spellcheck="false"></textarea>
+    </div>
+    <div style="padding:14px 22px;display:flex;align-items:center;gap:10px;">
+      <button class="btn primary" onclick="confirmImport()">Create Song</button>
+      <div style="flex:1;"></div>
+      <div id="import-status" style="font-size:.78rem;color:var(--dim);"></div>
+      <button class="btn" onclick="closeImportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── CSV Import Modal ─────────────────────────────────────────── -->
 <div id="csv-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;
@@ -1025,12 +1103,14 @@ function updateCePreview() {
       '<span style="color:var(--dim);font-style:italic;">Preview appears as you type…</span>';
     return;
   }
+  // Escape HTML in the raw text before inserting as innerHTML,
+  // then restore the structural tags we intentionally inject (<br>, <span>)
   if (ceMode === 'lyrics') {
-    preview.innerHTML = raw
+    preview.innerHTML = esc(raw)
       .replace(/\[[^\]]+\]/g, '')
       .replace(/\n/g, '<br>');
   } else {
-    preview.innerHTML = raw
+    preview.innerHTML = esc(raw)
       .replace(/\[([^\]]+)\]/g,
         '<span style="color:var(--amber);font-size:.82em;font-weight:500;' +
         'position:relative;top:-.3em;margin:0 1px;">$1</span>')
@@ -1945,8 +2025,8 @@ function lRenderSong() {
   document.getElementById('l-song-title').textContent = lSong.title;
 
   const meta = [];
-  if (lSong.artist)   meta.push(`<b>${lSong.artist}</b>`);
-  if (lSong.song_key) meta.push(`Key: <b>${lSong.song_key}</b>`);
+  if (lSong.artist)   meta.push(`<b>${esc(lSong.artist)}</b>`);
+  if (lSong.song_key) meta.push(`Key: <b>${esc(lSong.song_key)}</b>`);
   if (lSong.tempo)    meta.push(`♩ <b>${lSong.tempo} BPM</b>`);
   document.getElementById('l-song-meta').innerHTML = meta.join(' · ');
 
@@ -2663,6 +2743,103 @@ const CSV_FIELDS = [
   { key: 'duration', label: 'Duration', required: false },
   { key: 'status',   label: 'Status',   required: false },
 ];
+
+
+// ── File import (PDF / text chord sheets) ────────────────────
+let _importData = null;  // holds last server response
+
+async function handleImportFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  // Reset input so same file can be re-selected
+  document.getElementById('import-file-input').value = '';
+
+  const status = document.getElementById('import-status');
+  status.textContent = 'Reading file…';
+  document.getElementById('import-overlay').style.display = 'flex';
+  document.getElementById('import-title').value  = '';
+  document.getElementById('import-artist').value = '';
+  document.getElementById('import-preview').value = '';
+  document.getElementById('import-line-count').textContent = '';
+  document.getElementById('import-chordpro-badge').style.display = 'none';
+  document.getElementById('import-filename').textContent = file.name;
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const r = await fetch('/api/songs/import-file', {
+      method: 'POST',
+      headers: _authHeaders(),
+      body: fd,
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: 'Unknown error' }));
+      status.textContent = 'Error: ' + (err.detail || r.statusText);
+      return;
+    }
+    _importData = await r.json();
+    document.getElementById('import-title').value  = _importData.title  || '';
+    document.getElementById('import-artist').value = _importData.artist || '';
+    document.getElementById('import-preview').value = _importData.raw   || '';
+    const lines = (_importData.raw || '').split('\n').length;
+    document.getElementById('import-line-count').textContent = `(${lines} lines)`;
+    const badge = document.getElementById('import-chordpro-badge');
+    badge.style.display = _importData.is_chordpro ? 'inline-block' : 'none';
+    // Auto-select destination: ChordPro → chords field, plain text → chords field too
+    document.getElementById('import-dest-chords').checked = true;
+    status.textContent = '';
+  } catch (err) {
+    status.textContent = 'Network error: ' + err.message;
+  }
+}
+
+async function confirmImport() {
+  const title = document.getElementById('import-title').value.trim();
+  if (!title) {
+    document.getElementById('import-status').textContent = 'Title is required.';
+    return;
+  }
+  const artist  = document.getElementById('import-artist').value.trim();
+  const raw     = document.getElementById('import-preview').value;
+  const dest    = document.querySelector('input[name="import-dest"]:checked')?.value || 'chords';
+  const status  = document.getElementById('import-status');
+
+  status.textContent = 'Saving…';
+
+  const body = {
+    title,
+    artist: artist || null,
+    song_key: null, capo: 0, tempo: null, duration: null,
+    status: 'active', lyrics: null, chords: null, notes: null,
+  };
+  body[dest] = raw;
+
+  try {
+    const r = await fetch('/api/songs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      status.textContent = 'Save failed: ' + r.statusText;
+      return;
+    }
+    const song = await r.json();
+    closeImportModal();
+    await loadSongs();
+    // Open the song editor so user can review and tidy up
+    openSongModal(song.id);
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+  }
+}
+
+function closeImportModal(e) {
+  if (e && e.target.id !== 'import-overlay') return;
+  document.getElementById('import-overlay').style.display = 'none';
+  _importData = null;
+}
 
 function downloadCsvTemplate() {
   const headers = CSV_FIELDS.map(f => f.label);
