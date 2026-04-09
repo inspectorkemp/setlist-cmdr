@@ -17,6 +17,15 @@ import sys
 import venv
 from pathlib import Path
 
+# ── Python version gate ───────────────────────────────────────
+if sys.version_info < (3, 9):
+    print(
+        f"ERROR: Python 3.9 or newer is required.\n"
+        f"       You are running Python {sys.version.split()[0]}.\n"
+        f"       Download a newer version from https://python.org"
+    )
+    sys.exit(1)
+
 ROOT      = Path(__file__).parent
 VENV_DIR  = ROOT / "venv"
 REQ_FILE  = ROOT / "requirements.txt"
