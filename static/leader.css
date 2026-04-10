@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════
+   SETLIST NAVIGATOR — leader.css
+   Mobile-first, fluid layout. Edit here, never inline.
+   ══════════════════════════════════════════════════════════════ */
+
 /* ── Design tokens ───────────────────────────────────────────── */
 :root {
   --bg:         #08080f;
@@ -262,8 +267,17 @@ html, body {
 .l-ctrl:active { opacity:.7; }
 #l-xp-display { font-family:'DM Mono',monospace; font-size:var(--fs-md); color:var(--amber); min-width:34px; text-align:center; }
 
-#metro-flash { position:fixed; inset:0; pointer-events:none; z-index:999; opacity:0; background:radial-gradient(ellipse at center, transparent 35%, rgba(245,158,11,0.25) 65%, rgba(255,255,255,0.55) 100%); transition:opacity 60ms ease-out; }
+#metro-flash { position:fixed; inset:0; pointer-events:none; z-index:999; opacity:0; display:flex; align-items:center; justify-content:center; transition:opacity 60ms ease-out; }
 #metro-flash.beat { opacity:1; }
+#metro-flash .metro-ring { position:absolute; inset:0; background:radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.18) 68%,rgba(255,255,255,0.42) 100%); }
+#metro-flash.downbeat .metro-ring { background:radial-gradient(ellipse at center,transparent 28%,rgba(245,158,11,0.38) 62%,rgba(255,255,255,0.68) 100%); }
+#metro-flash .metro-num { position:relative; z-index:1; font-family:'Bebas Neue',sans-serif; font-size:clamp(5rem,18vw,16rem); line-height:1; color:rgba(245,158,11,0.72); letter-spacing:4px; text-shadow:0 0 60px rgba(245,158,11,0.4); transform:scale(0.88); transition:transform 60ms ease-out; }
+#metro-flash.beat .metro-num { transform:scale(1); }
+#metro-flash.downbeat .metro-num { color:rgba(255,255,255,0.88); text-shadow:0 0 80px rgba(245,158,11,0.7),0 0 20px rgba(255,255,255,0.5); }
+#metro-getready { position:fixed; inset:0; pointer-events:none; z-index:1000; display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px; background:rgba(0,0,0,0.45); }
+#metro-getready .gr-text { font-family:'Bebas Neue',sans-serif; font-size:clamp(3rem,10vw,8rem); letter-spacing:8px; color:var(--amber); animation:gr-pulse 0.5s ease-in-out infinite alternate; }
+#metro-getready .gr-bpm  { font-family:'DM Mono',monospace; font-size:clamp(1rem,3vw,2rem); color:var(--dim); letter-spacing:3px; }
+@keyframes gr-pulse { from { opacity:.5; transform:scale(.97); } to { opacity:1; transform:scale(1.03); } }
 #leader-metro-btn .bpm-sub { display:block; font-size:.62rem; font-weight:400; opacity:.7; margin-top:1px; }
 
 /* ── Modal ───────────────────────────────────────────────────── */
