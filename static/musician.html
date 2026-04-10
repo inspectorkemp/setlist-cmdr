@@ -245,13 +245,65 @@ body.hi-contrast #song-content { color:#ffffff; }
 #metro-flash {
   position: fixed; inset: 0; pointer-events: none; z-index: 100;
   opacity: 0;
-  background: radial-gradient(ellipse at center,
-    transparent 35%,
-    rgba(245,158,11,0.25) 65%,
-    rgba(255,255,255,0.55) 100%);
+  display: flex; align-items: center; justify-content: center;
   transition: opacity 60ms ease-out;
 }
 #metro-flash.beat { opacity: 1; }
+#metro-flash .metro-ring {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center,
+    transparent 35%,
+    rgba(245,158,11,0.18) 68%,
+    rgba(255,255,255,0.42) 100%);
+}
+#metro-flash.downbeat .metro-ring {
+  background: radial-gradient(ellipse at center,
+    transparent 28%,
+    rgba(245,158,11,0.38) 62%,
+    rgba(255,255,255,0.68) 100%);
+}
+#metro-flash .metro-num {
+  position: relative; z-index: 1;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(6rem, 22vw, 18rem);
+  line-height: 1;
+  color: rgba(245,158,11,0.72);
+  letter-spacing: 4px;
+  text-shadow: 0 0 60px rgba(245,158,11,0.4);
+  transform: scale(0.88);
+  transition: transform 60ms ease-out;
+}
+#metro-flash.beat .metro-num {
+  transform: scale(1);
+}
+#metro-flash.downbeat .metro-num {
+  color: rgba(255,255,255,0.88);
+  text-shadow: 0 0 80px rgba(245,158,11,0.7), 0 0 20px rgba(255,255,255,0.5);
+}
+/* GET READY overlay */
+#metro-getready {
+  position: fixed; inset: 0; pointer-events: none; z-index: 101;
+  display: none; align-items: center; justify-content: center;
+  flex-direction: column; gap: 16px;
+  background: rgba(0,0,0,0.55);
+}
+#metro-getready .gr-text {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(3rem, 10vw, 8rem);
+  letter-spacing: 8px;
+  color: var(--amber);
+  animation: gr-pulse 0.5s ease-in-out infinite alternate;
+}
+#metro-getready .gr-bpm {
+  font-family: 'DM Mono', monospace;
+  font-size: clamp(1rem, 3vw, 2rem);
+  color: var(--dim);
+  letter-spacing: 3px;
+}
+@keyframes gr-pulse {
+  from { opacity: 0.5; transform: scale(0.97); }
+  to   { opacity: 1.0; transform: scale(1.03); }
+}
 
 /* BPM readout in button */
 #btn-metro { min-width: 72px; }
@@ -414,7 +466,14 @@ body.hi-contrast #song-content { color:#ffffff; }
 </div>
 
 <!-- ── Metronome flash overlay ────────────────────────────── -->
-<div id="metro-flash"></div>
+<div id="metro-flash">
+  <div class="metro-ring"></div>
+  <div class="metro-num" id="metro-num">1</div>
+</div>
+<div id="metro-getready">
+  <div class="gr-text">GET READY</div>
+  <div class="gr-bpm" id="gr-bpm-display"></div>
+</div>
 
 <!-- ── Main app ───────────────────────────────────────────── -->
 <div id="app">
@@ -966,6 +1025,60 @@ function splitToColumns(html) {
     '</div>';
 }
 
+// ── Consolidated view ─────────────────────────────────────────
+// Renders each named section exactly once, in order of first
+// appearance. Repeated sections and bare back-references are
+// omitted entirely. Content outside any section marker is included.
+function consolidatedHTML(text, xpSemitones, mode) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const out   = [];
+  const seen  = new Set();
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (_isSectionLine(line)) {
+      const label = _sectionLabel(line);
+
+      // Does this occurrence have its own content?
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+
+      if (seen.has(label) || !hasContent) {
+        // Skip — already rendered or bare reference
+        i++;
+        while (i < lines.length && !_isSectionLine(lines[i])) i++;
+        continue;
+      }
+
+      seen.add(label);
+      out.push(
+        '<div class="cp-section">' +
+          '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+        '</div>'
+      );
+      i++;
+      const sectionLines = [];
+      while (i < lines.length && !_isSectionLine(lines[i])) {
+        sectionLines.push(lines[i]);
+        i++;
+      }
+      out.push(_renderLines(sectionLines, xpSemitones, mode));
+
+    } else {
+      out.push(_renderLines([line], xpSemitones, mode));
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No content for this song.</span>';
+}
+
 function renderSong() {
   if (!song) return;
 
@@ -986,7 +1099,11 @@ function renderSong() {
 
   const el  = document.getElementById('song-content');
   let html;
-  if (mode === 'lyrics') {
+  if (mode === 'consol') {
+    const raw = song.chords || song.lyrics || '';
+    html = consolidatedHTML(raw, dispXp, 'chords') ||
+      '<span class="cp-empty">No content added for this song.</span>';
+  } else if (mode === 'lyrics') {
     const raw = song.lyrics || song.chords || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
@@ -1036,14 +1153,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Mode ──────────────────────────────────────────────────────
 function toggleMode() {
-  mode = mode === 'lyrics' ? 'chords' : 'lyrics';
+  mode = mode === 'lyrics' ? 'chords' : mode === 'chords' ? 'consol' : 'lyrics';
   localStorage.setItem('bsl_mode', mode);
   applyMode();
   renderSong();
 }
 function applyMode() {
   const btn = document.getElementById('btn-mode');
-  btn.textContent = mode === 'lyrics' ? 'LYRICS' : 'CHORDS';
+  btn.textContent = mode === 'consol' ? 'CONSOL' : mode === 'chords' ? 'CHORDS' : 'LYRICS';
   btn.classList.toggle('active', mode === 'lyrics');
 }
 
@@ -1159,7 +1276,7 @@ function _metroScheduler() {
       _lastBeat = beat;
       const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
       const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
-      setTimeout(() => { if (metroOn) _fireFlash(isDown); }, delayMs);
+      const _beat = beat; setTimeout(() => { if (metroOn) _fireFlash(isDown, _beat); }, delayMs);
     }
     beat++;
   }
@@ -1171,7 +1288,7 @@ function _metroFallback() {
   const beat       = Math.max(0, Math.floor((Date.now() - localEpoch) / beatMs));
   if (beat > _lastBeat) {
     _lastBeat = beat;
-    _fireFlash((beat % metroBar + metroBar) % metroBar === 0);
+    _fireFlash((beat % metroBar + metroBar) % metroBar === 0, beat);
   }
 }
 
@@ -1188,24 +1305,29 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
 }
 
 function _stopMetroEngine() {
-  metroOn = false;
+  metroOn      = false;
+  _metroWarmup = false;
   clearInterval(_metroST);
   _metroST  = null;
   _lastBeat = -1;
-  const f = document.getElementById('metro-flash');
-  if (f) f.classList.remove('beat');
+  const f  = document.getElementById('metro-flash');
+  if (f) f.classList.remove('beat', 'downbeat');
+  const gr = document.getElementById('metro-getready');
+  if (gr) gr.style.display = 'none';
 }
 
-function _fireFlash(isDown) {
-  const el = document.getElementById('metro-flash');
+function _fireFlash(isDown, beatNum) {
+  if (_metroWarmup) return;
+  const el  = document.getElementById('metro-flash');
+  const num = document.getElementById('metro-num');
   if (!el) return;
-  const beatMs = 60000 / (metroBpm || 120);
-  el.style.background = isDown
-    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
-    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
+  const beatMs    = 60000 / (metroBpm || 120);
+  const beatInBar = ((beatNum || 0) % metroBar) + 1;
+  if (num) num.textContent = beatInBar;
+  el.classList.toggle('downbeat', isDown);
   el.classList.add('beat');
-  setTimeout(() => el.classList.remove('beat'),
-    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
+  const holdMs = isDown ? Math.min(140, beatMs * 0.22) : Math.min(90, beatMs * 0.14);
+  setTimeout(() => el.classList.remove('beat', 'downbeat'), holdMs);
 }
 
 ['click','touchstart','keydown'].forEach(ev =>
@@ -1214,10 +1336,28 @@ function _fireFlash(isDown) {
   }, { passive: true }));
 
 function startMetroFromEpoch(bpm, beatsPerBar, serverEpochMs) {
+  // Show GET READY while the clock sync is still settling.
+  // Suppress flashing for the first bar duration so the first
+  // visible beat is already well-synchronised across all devices.
+  const grEl  = document.getElementById('metro-getready');
+  const bpmEl = document.getElementById('gr-bpm-display');
+  if (grEl) {
+    grEl.style.display = 'flex';
+    if (bpmEl) bpmEl.textContent = bpm + ' BPM';
+  }
+  // Start the engine but suppress flashes during warmup
+  _metroWarmup = true;
   _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
+  // Warmup duration: one full bar at the song tempo, minimum 1s
+  const barMs = Math.max(1000, (60000 / bpm) * (beatsPerBar || 4));
+  setTimeout(() => {
+    _metroWarmup = false;
+    if (grEl) grEl.style.display = 'none';
+  }, barMs);
   document.getElementById('btn-metro').classList.add('active');
   document.getElementById('metro-bpm-sub').textContent = `${bpm} bpm`;
 }
+let _metroWarmup = false;
 
 let metroTimeout = null;
 
