@@ -919,6 +919,8 @@ monitor_config = {
     "cols":      False,
     "fit":       False,
     "hc":        False,
+    "portrait":  False,
+    "rotated":   False,
     "fontscale": 1.0,
 }
 
@@ -990,6 +992,8 @@ async def ws_endpoint(websocket: WebSocket):
                             "cols":      bool(msg.get("cols",      monitor_config["cols"])),
                             "fit":       bool(msg.get("fit",       monitor_config["fit"])),
                             "hc":        bool(msg.get("hc",        monitor_config["hc"])),
+                            "portrait":  bool(msg.get("portrait",  monitor_config["portrait"])),
+                            "rotated":   bool(msg.get("rotated",   monitor_config["rotated"])),
                             "fontscale": float(msg.get("fontscale", monitor_config["fontscale"])),
                         })
                         await manager.broadcast({"type": "monitor_config", **monitor_config})
