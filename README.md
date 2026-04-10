@@ -32,7 +32,7 @@ Section markers use the same bracket syntax as chords. Any token that is not a v
 Bulk-import songs from a spreadsheet. Download a template from the Songs toolbar, fill in your songs, upload the CSV, map each column to the correct field, and import. Supported fields: Title, Artist, Key, Tempo, Duration, Status. Lyrics, chords, and notes must be added per song after import.
 
 **File import**
-Import a chord sheet using the Import button in the Songs toolbar. Supported formats: .pdf, .txt, .chopro, .cho, .crd, .chordpro, .pro. The server extracts the text, auto-detects title and artist from the first lines, and opens a review modal where you can edit before creating the song. Born-digital PDFs extract cleanly. Scanned image PDFs contain no extractable text and are not supported.
+Import a single chord sheet using the Import button, or bulk-import a zip archive using the Batch button. Single file import opens a review modal before creating the song. Batch import processes every supported file in the zip and imports directly to the library with duplicate detection. Supported formats: .pdf, .txt, .chopro, .cho, .crd, .chordpro, .pro, .onsong (OnSong export format).
 
 **Setlists**
 Create and manage multiple setlists. Add songs from your library, drag to reorder, insert section labels between songs, and see a running total duration. Clone any setlist as a starting point. Mark setlists Active or Inactive. The setlist list itself can be reordered by dragging.
@@ -52,7 +52,7 @@ Monitor settings (all available via remote push, QR setup page, or URL params):
 
 | Setting | URL param | Effect |
 |---|---|---|
-| View mode | mode=chords or mode=lyrics | Which content to show (default: chords) |
+| View mode | mode=chords, mode=lyrics, mode=consol | Which content to show (default: chords) |
 | Two columns | cols=1 | Side-by-side column layout |
 | Fit mode | fit=1 | Compact layout with auto-fit font scaling |
 | High contrast | hc=1 | Brighter text for washed-out displays |
@@ -66,6 +66,8 @@ Rotates the entire browser content 90 degrees clockwise using a CSS transform. U
 **Synced flash metronome**
 The leader starts the metronome and all connected devices flash in phase. Each device exchanges 16 round-trip timestamps with the server on connect, discards the 8 with the worst latency, and averages the rest to compute a clock offset. Re-syncs every 30 seconds. Uses the Web Audio API where available. Auto-stops after a configurable timeout of 10, 15, 20, or 30 seconds.
 
+When the metronome starts, a GET READY overlay appears on all screens showing the BPM while the clock sync settles. Flashing is suppressed during this warmup period (one full bar at the song tempo). After the warmup, each beat displays a large transparent beat number (1, 2, 3, 4) in the centre of the screen that pulses in and fades out. Beat 1 gets brighter treatment with a near-white number and amber bloom. The perimeter radial glow remains as a backing layer behind the numbers.
+
 **Signal messages**
 Send one-tap text alerts to all musician screens. Eight configurable slots mapped to F1 through F8. Default signals: RUSHING, DRAGGING, CHORUS, BRIDGE, KEEP GOING, WRAP IT UP, HOLD HERE, EYES ON ME. Labels are editable. A large amber banner appears on every musician screen and dismisses after 3 seconds.
 
@@ -76,7 +78,9 @@ Pair any Bluetooth page turner with the leader device and assign keys in Setting
 Each musician can assign their own pedal independently via the gear button in the musician header. Four assignable actions: Scroll Down, Scroll Up, Lyrics/Chords toggle, Auto Scroll toggle. Two presets: Arrow keys, Page Up/Down. Settings are saved per device.
 
 **Per-musician controls**
-Each musician independently controls: Lyrics/Chords view toggle, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view.
+Each musician independently controls: view mode, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view.
+
+The view mode button cycles through three options: Lyrics (plain text, no chords), Chords (chord-above-lyric layout), and Consolidated (each unique section shown once with all repeats omitted). Consolidated is useful for long songs where the structure is already known.
 
 **Compact stage mode**
 A compact button in the leader live control bar collapses all chrome to minimum height, maximising the content area. Saved across sessions.
@@ -277,6 +281,8 @@ Paste it in, click Convert to ChordPro, and chord positions are mapped to the ly
 
 ## File import
 
+**Single file import**
+
 Click Import in the Songs toolbar and select a file.
 
 | Extension | Notes |
@@ -284,8 +290,27 @@ Click Import in the Songs toolbar and select a file.
 | .pdf | Born-digital PDFs only. Scanned image PDFs have no extractable text. |
 | .txt | Plain text. Use the Convert tool to convert to ChordPro. |
 | .chopro / .cho / .crd / .chordpro / .pro | ChordPro format, imports directly. |
+| .onsong | OnSong export format, imports directly. |
 
 A preview modal lets you edit the content and choose whether to place it in the Chords or Lyrics field before creating the song. The song editor opens automatically after import.
+
+**Batch import**
+
+Click Batch in the Songs toolbar and select a zip file containing song files. Every supported file in the zip is processed and imported directly to the library with no per-song review step. Duplicate detection skips any song whose title already exists in the library. A results panel shows what was imported and what was skipped with the reason.
+
+Supported file types inside the zip: .chopro, .cho, .crd, .chordpro, .pro, .onsong, .txt, .pdf.
+
+**Importing from OnSong**
+
+The .onsong file format is plain text (essentially ChordPro with metadata headers) and imports cleanly. The OnSong Archive format (.archive or .onsongarchive) is a proprietary binary bundle intended only for OnSong-to-OnSong transfers and cannot be parsed by other software.
+
+To export from OnSong for use with Setlist CMDR:
+
+1. In OnSong, open a song and use Share or Export to export it as a ChordPro or OnSong text file.
+2. For bulk export, use OnSong Console (the web browser interface) to export multiple songs at once.
+3. Zip the exported files and use the Batch import button.
+
+Song text, chords, title, artist, key, capo, and tempo import correctly. Annotations drawn on charts, audio backing tracks, and songs that were stored in OnSong as PDFs or images rather than entered as text will not transfer.
 
 **Pi note:** pdfplumber is installed automatically by setup.sh. On an existing Pi set up before file import was added:
 ```bash
