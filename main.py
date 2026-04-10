@@ -693,6 +693,149 @@ async def import_song_file(file: UploadFile = File(...)):
         "filename":   file.filename,
     }
 
+
+def _process_one_file(filename: str, data: bytes) -> dict:
+    """Extract text and metadata from a single file. Returns a result dict."""
+    name = filename.lower()
+    try:
+        if name.endswith(".pdf"):
+            raw = _extract_pdf_text(data)
+        elif name.endswith((".txt", ".chopro", ".cho", ".crd", ".chordpro", ".pro", ".onsong")):
+            try:
+                raw = data.decode("utf-8")
+            except UnicodeDecodeError:
+                raw = data.decode("latin-1", errors="replace")
+        else:
+            return {"filename": filename, "ok": False, "error": "Unsupported file type"}
+
+        raw = _clean_extracted_text(raw)
+        if not raw.strip():
+            return {"filename": filename, "ok": False, "error": "No text content found"}
+
+        title, artist = _guess_title_artist(raw, filename)
+        is_chordpro = bool(re.search(r'\[[A-G][^\]]*\]', raw))
+
+        return {
+            "filename":    filename,
+            "ok":          True,
+            "title":       title,
+            "artist":      artist,
+            "raw":         raw,
+            "is_chordpro": is_chordpro,
+        }
+    except Exception as exc:
+        return {"filename": filename, "ok": False, "error": str(exc)}
+
+
+@app.post("/api/songs/import-batch", dependencies=[Depends(require_auth)])
+async def import_songs_batch(file: UploadFile = File(...)):
+    """Accept a .zip file containing song files and bulk-import them.
+    Each supported file becomes a song. Returns a summary of results."""
+    import zipfile
+
+    name = (file.filename or "").lower()
+    data = await file.read()
+
+    # Also accept a single non-zip file as a 1-item batch
+    if not name.endswith(".zip"):
+        result = _process_one_file(file.filename or "import", data)
+        if not result["ok"]:
+            raise HTTPException(400, result["error"])
+        # Write single song to DB
+        conn = get_db()
+        dest = "chords" if result["is_chordpro"] else "lyrics"
+        cur = conn.execute(
+            "INSERT INTO songs (title,artist,song_key,capo,tempo,duration,status,lyrics,chords,notes)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (result["title"], result["artist"] or None, None, 0, None, None,
+             "active",
+             None if dest == "chords" else result["raw"],
+             result["raw"] if dest == "chords" else None,
+             None)
+        )
+        conn.commit()
+        song_id = cur.lastrowid
+        conn.close()
+        return {"imported": 1, "skipped": 0, "results": [{
+            "filename": result["filename"],
+            "ok": True,
+            "title": result["title"],
+            "artist": result["artist"],
+            "song_id": song_id,
+        }]}
+
+    # Process zip
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "File is not a valid zip archive")
+
+    SUPPORTED = (".pdf", ".txt", ".chopro", ".cho", ".crd", ".chordpro", ".pro", ".onsong")
+    entries = [
+        n for n in zf.namelist()
+        if not n.startswith("__MACOSX")          # skip macOS metadata
+        and not os.path.basename(n).startswith(".")  # skip hidden files
+        and n.lower().endswith(SUPPORTED)
+    ]
+
+    if not entries:
+        raise HTTPException(400, "Zip contains no supported song files (.chopro .cho .crd .txt .pdf .onsong)")
+
+    conn = get_db()
+    results = []
+    imported = 0
+    skipped = 0
+
+    for entry in entries:
+        basename = os.path.basename(entry)
+        file_data = zf.read(entry)
+        result = _process_one_file(basename, file_data)
+
+        if not result["ok"]:
+            results.append({"filename": basename, "ok": False, "error": result["error"]})
+            skipped += 1
+            continue
+
+        # Skip duplicates — same title already in library
+        existing = conn.execute(
+            "SELECT id FROM songs WHERE LOWER(title)=LOWER(?)", (result["title"],)
+        ).fetchone()
+        if existing:
+            results.append({
+                "filename": basename, "ok": False,
+                "error": f"Skipped — song titled '{result['title']}' already exists",
+                "duplicate": True,
+            })
+            skipped += 1
+            continue
+
+        dest = "chords" if result["is_chordpro"] else "lyrics"
+        try:
+            cur = conn.execute(
+                "INSERT INTO songs (title,artist,song_key,capo,tempo,duration,status,lyrics,chords,notes)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (result["title"], result["artist"] or None, None, 0, None, None,
+                 "active",
+                 None if dest == "chords" else result["raw"],
+                 result["raw"] if dest == "chords" else None,
+                 None)
+            )
+            conn.commit()
+            results.append({
+                "filename": basename,
+                "ok":       True,
+                "title":    result["title"],
+                "artist":   result["artist"],
+                "song_id":  cur.lastrowid,
+            })
+            imported += 1
+        except Exception as exc:
+            results.append({"filename": basename, "ok": False, "error": str(exc)})
+            skipped += 1
+
+    conn.close()
+    return {"imported": imported, "skipped": skipped, "results": results}
+
 # ── Setlists ──────────────────────────────────────────────────
 
 @app.get("/api/setlists")
