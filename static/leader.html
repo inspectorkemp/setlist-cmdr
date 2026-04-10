@@ -508,6 +508,16 @@ if ('serviceWorker' in navigator) {
                  background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
             <input type="checkbox" id="mon-hc" style="accent-color:var(--amber);"> High contrast
           </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
+                 background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"
+                 title="TV is physically rotated — adjusts layout proportions">
+            <input type="checkbox" id="mon-portrait" style="accent-color:var(--amber);"> Portrait (HW)
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
+                 background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"
+                 title="Rotate browser content 90° in software — TV stays in landscape">
+            <input type="checkbox" id="mon-rotated" style="accent-color:var(--amber);"> Rotate 90°
+          </label>
         </div>
         <button class="btn primary" onclick="pushMonitorConfig()" style="width:100%;">
           PUSH TO MONITOR
@@ -2654,7 +2664,9 @@ function openSettingsModal() {
   document.getElementById('mon-mode').value     = mc.mode      || 'chords';
   document.getElementById('mon-cols').checked   = !!mc.cols;
   document.getElementById('mon-fit').checked    = !!mc.fit;
-  document.getElementById('mon-hc').checked     = !!mc.hc;
+  document.getElementById('mon-hc').checked       = !!mc.hc;
+  document.getElementById('mon-portrait').checked = !!mc.portrait;
+  document.getElementById('mon-rotated').checked  = !!mc.rotated;
   const fs = parseFloat(mc.fontscale) || 1.0;
   document.getElementById('mon-fontscale').value = fs;
   document.getElementById('mon-fs-val').textContent = fs.toFixed(1) + 'x';
@@ -2759,6 +2771,8 @@ function pushMonitorConfig() {
     cols:      document.getElementById('mon-cols').checked,
     fit:       document.getElementById('mon-fit').checked,
     hc:        document.getElementById('mon-hc').checked,
+    portrait:  document.getElementById('mon-portrait').checked,
+    rotated:   document.getElementById('mon-rotated').checked,
     fontscale: parseFloat(document.getElementById('mon-fontscale').value),
   };
   if (!leaderWs || leaderWs.readyState !== 1) {
