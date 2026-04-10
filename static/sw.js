@@ -84,7 +84,8 @@ self.addEventListener('fetch', e => {
   }
 
   // HTML: network-first, cache as offline fallback
-  if (url.pathname === '/' || url.pathname === '/leader') {
+  if (url.pathname === '/' || url.pathname === '/leader' ||
+      url.pathname === '/monitor' || url.pathname === '/monitor/setup') {
     e.respondWith(
       fetch(e.request)
         .then(resp => {
