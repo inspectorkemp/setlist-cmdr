@@ -70,7 +70,14 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<div id="metro-flash"></div>
+<div id="metro-flash">
+  <div class="metro-ring"></div>
+  <div class="metro-num" id="metro-num">1</div>
+</div>
+<div id="metro-getready">
+  <div class="gr-text">GET READY</div>
+  <div class="gr-bpm" id="gr-bpm-display"></div>
+</div>
 <div id="shell">
 
   <!-- Nav -->
@@ -166,9 +173,11 @@ if ('serviceWorker' in navigator) {
       <div class="spacer"></div>
       <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(event)">
       <input type="file" id="import-file-input" accept=".pdf,.txt,.chopro,.cho,.crd,.chordpro,.pro" style="display:none" onchange="handleImportFile(event)">
+      <input type="file" id="batch-file-input" accept=".zip,.chopro,.cho,.crd,.onsong" style="display:none" onchange="handleBatchImport(event)">
       <button class="btn" onclick="downloadCsvTemplate()" title="Download a blank template CSV">▼ Template</button>
       <button class="btn" onclick="document.getElementById('csv-file-input').click()">▲ CSV</button>
       <button class="btn" onclick="document.getElementById('import-file-input').click()" title="Import PDF or text chord sheet">▲ Import</button>
+      <button class="btn" onclick="document.getElementById('batch-file-input').click()" title="Bulk import a zip of chord sheets">▲ Batch</button>
       <button class="btn primary" onclick="openSongModal(null)">+ New Song</button>
     </div>
     <div class="list-area" id="song-list"></div>
@@ -482,6 +491,7 @@ if ('serviceWorker' in navigator) {
                            font-size:.85rem;padding:7px 10px;outline:none;">
               <option value="chords">Chords</option>
               <option value="lyrics">Lyrics</option>
+              <option value="consol">Consolidated</option>
             </select>
           </div>
           <div>
@@ -645,6 +655,50 @@ Here comes the sun…"></textarea>
 </div>
 
 </div><!-- /shell -->
+
+<!-- ── Batch Import Modal ────────────────────────────────────── -->
+<div id="batch-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);
+            z-index:600;align-items:flex-start;justify-content:center;
+            padding:24px 16px;overflow-y:auto;"
+     onclick="closeBatchModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);
+       border-radius:16px;width:100%;max-width:640px;">
+    <div style="padding:16px 22px;border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:12px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.5rem;
+           letter-spacing:2px;color:var(--amber);flex:1;">BATCH IMPORT</div>
+      <button onclick="closeBatchModal()"
+              style="background:none;border:none;color:var(--dim);
+                     cursor:pointer;font-size:1.1rem;padding:2px 6px;">x</button>
+    </div>
+    <div id="batch-progress"
+         style="padding:32px;text-align:center;font-family:'DM Mono',monospace;
+                font-size:.9rem;color:var(--dim);display:none;">
+      Importing...
+    </div>
+    <div id="batch-results" style="display:none;">
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);
+           display:flex;gap:20px;">
+        <div style="font-size:.85rem;">
+          Imported: <span id="batch-count-ok"
+            style="font-family:'DM Mono',monospace;color:var(--green);font-weight:600;">0</span>
+        </div>
+        <div style="font-size:.85rem;">
+          Skipped: <span id="batch-count-skip"
+            style="font-family:'DM Mono',monospace;color:var(--dim);font-weight:600;">0</span>
+        </div>
+      </div>
+      <div id="batch-result-list"
+           style="max-height:360px;overflow-y:auto;padding:8px 0;"></div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);">
+        <button class="btn primary" onclick="closeBatchModal()" style="width:100%;">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── File Import Modal ─────────────────────────────────────── -->
 <div id="import-overlay"
@@ -2072,6 +2126,60 @@ function splitToColumns(html) {
     '</div><div class="col-half">' + col2 + '</div></div>';
 }
 
+// ── Consolidated view ─────────────────────────────────────────
+// Renders each named section exactly once, in order of first
+// appearance. Repeated sections and bare back-references are
+// omitted entirely. Content outside any section marker is included.
+function consolidatedHTML(text, xpSemitones, mode) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const out   = [];
+  const seen  = new Set();
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (_isSectionLine(line)) {
+      const label = _sectionLabel(line);
+
+      // Does this occurrence have its own content?
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+
+      if (seen.has(label) || !hasContent) {
+        // Skip — already rendered or bare reference
+        i++;
+        while (i < lines.length && !_isSectionLine(lines[i])) i++;
+        continue;
+      }
+
+      seen.add(label);
+      out.push(
+        '<div class="cp-section">' +
+          '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+        '</div>'
+      );
+      i++;
+      const sectionLines = [];
+      while (i < lines.length && !_isSectionLine(lines[i])) {
+        sectionLines.push(lines[i]);
+        i++;
+      }
+      out.push(_renderLines(sectionLines, xpSemitones, mode));
+
+    } else {
+      out.push(_renderLines([line], xpSemitones, mode));
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No content for this song.</span>';
+}
+
 function lRenderSong() {
   if (!lSong) {
     document.getElementById('l-song-content').innerHTML =
@@ -2104,7 +2212,11 @@ function lRenderSong() {
 
   const el = document.getElementById('l-song-content');
   let html;
-  if (lMode === 'lyrics') {
+  if (lMode === 'consol') {
+    const raw = lSong.chords || lSong.lyrics || '';
+    html = consolidatedHTML(raw, dispXp, 'chords') ||
+      '<span class="cp-empty">No content added for this song.</span>';
+  } else if (lMode === 'lyrics') {
     const raw = lSong.lyrics || lSong.chords || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
@@ -2153,10 +2265,10 @@ function lApplyColumns() {
 }
 
 function lToggleMode() {
-  lMode = lMode === 'lyrics' ? 'chords' : 'lyrics';
+  lMode = lMode === 'lyrics' ? 'chords' : lMode === 'chords' ? 'consol' : 'lyrics';
   localStorage.setItem('l_mode', lMode);
   const btn = document.getElementById('l-btn-mode');
-  btn.textContent = lMode === 'lyrics' ? 'LYRICS' : 'CHORDS';
+  btn.textContent = lMode === 'consol' ? 'CONSOL' : lMode === 'chords' ? 'CHORDS' : 'LYRICS';
   btn.classList.toggle('active', lMode === 'lyrics');
   lRenderSong();
 }
@@ -2415,7 +2527,7 @@ function _metroScheduler() {
       _lastBeat = beat;
       const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
       const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
-      setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown); }, delayMs);
+      const _beat = beat; setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown, _beat); }, delayMs);
     }
     beat++;
   }
@@ -2427,7 +2539,7 @@ function _metroFallback() {
   const beat       = Math.max(0, Math.floor((Date.now() - localEpoch) / beatMs));
   if (beat > _lastBeat) {
     _lastBeat = beat;
-    fireFlash(metroBpm, (beat % metroBar + metroBar) % metroBar === 0);
+    fireFlash(metroBpm, (beat % metroBar + metroBar) % metroBar === 0, beat);
   }
 }
 
@@ -2443,12 +2555,18 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
   _metroScheduler();
 }
 
+let _metroWarmup = false;
+
 function _stopMetroEngine() {
-  metroOn = false;
+  metroOn      = false;
+  _metroWarmup = false;
   clearInterval(_metroST);
   _metroST  = null;
   _lastBeat = -1;
-  document.getElementById('metro-flash').classList.remove('beat');
+  const f  = document.getElementById('metro-flash');
+  if (f) f.classList.remove('beat', 'downbeat');
+  const gr = document.getElementById('metro-getready');
+  if (gr) gr.style.display = 'none';
 }
 
 ['click','touchstart','keydown'].forEach(ev =>
@@ -2457,16 +2575,18 @@ function _stopMetroEngine() {
   }, { passive: true }));
 
 
-function fireFlash(bpm, isDown) {
-  const flash  = document.getElementById('metro-flash');
+function fireFlash(bpm, isDown, beatNum) {
+  if (_metroWarmup) return;
+  const flash = document.getElementById('metro-flash');
+  const num   = document.getElementById('metro-num');
   if (!flash) return;
-  const beatMs = 60000 / (bpm || 120);
-  flash.style.background = isDown
-    ? 'radial-gradient(ellipse at center,transparent 30%,rgba(245,158,11,0.4) 65%,rgba(255,255,255,0.7) 100%)'
-    : 'radial-gradient(ellipse at center,transparent 35%,rgba(245,158,11,0.15) 68%,rgba(255,255,255,0.38) 100%)';
+  const beatMs    = 60000 / (bpm || 120);
+  const beatInBar = ((beatNum || 0) % metroBar) + 1;
+  if (num) num.textContent = beatInBar;
+  flash.classList.toggle('downbeat', isDown);
   flash.classList.add('beat');
-  setTimeout(() => flash.classList.remove('beat'),
-    isDown ? Math.min(120, beatMs * 0.18) : Math.min(80, beatMs * 0.12));
+  const holdMs = isDown ? Math.min(140, beatMs * 0.22) : Math.min(90, beatMs * 0.14);
+  setTimeout(() => flash.classList.remove('beat', 'downbeat'), holdMs);
 }
 
 let metroTimeout = null;
@@ -2492,6 +2612,13 @@ function startMetro() {
   if (rBtn) rBtn.classList.add('active');
   if (leaderWs && leaderWs.readyState === 1) {
     leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:4, server_epoch:serverEpoch }));
+  // GET READY warmup on leader screen
+  const _grEl  = document.getElementById('metro-getready');
+  const _bpmEl = document.getElementById('gr-bpm-display');
+  if (_grEl) { _grEl.style.display = 'flex'; if (_bpmEl) _bpmEl.textContent = bpm + ' BPM'; }
+  _metroWarmup = true;
+  const _barMs = Math.max(1000, (60000 / bpm) * 4);
+  setTimeout(() => { _metroWarmup = false; if (_grEl) _grEl.style.display = 'none'; }, _barMs);
   }
   const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 20;
   clearTimeout(metroTimeout);
@@ -2847,6 +2974,67 @@ const CSV_FIELDS = [
   { key: 'status',   label: 'Status',   required: false },
 ];
 
+
+// ── Batch import (zip of chord sheets) ──────────────────────────
+async function handleBatchImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('batch-file-input').value = '';
+
+  // Show modal with progress state
+  document.getElementById('batch-overlay').style.display = 'flex';
+  document.getElementById('batch-progress').style.display = 'block';
+  document.getElementById('batch-results').style.display  = 'none';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const r = await fetch('/api/songs/import-batch', {
+      method: 'POST',
+      headers: _authHeaders(),
+      body: fd,
+    });
+    const data = await r.json();
+
+    if (!r.ok) {
+      document.getElementById('batch-progress').textContent =
+        'Error: ' + (data.detail || r.statusText);
+      return;
+    }
+
+    // Show results
+    document.getElementById('batch-progress').style.display = 'none';
+    document.getElementById('batch-results').style.display  = 'block';
+    document.getElementById('batch-count-ok').textContent   = data.imported;
+    document.getElementById('batch-count-skip').textContent = data.skipped;
+
+    const list = document.getElementById('batch-result-list');
+    list.innerHTML = data.results.map(r => {
+      const icon  = r.ok ? '<span style="color:var(--green);">+</span>' : '<span style="color:var(--dim);">-</span>';
+      const label = r.ok
+        ? `<b>${esc(r.title)}</b>${r.artist ? ' &middot; ' + esc(r.artist) : ''}`
+        : `<span style="color:var(--dim);">${esc(r.filename)}</span>`;
+      const note  = r.ok ? '' : `<span style="color:var(--dim);font-size:.72rem;"> ${esc(r.error || '')}</span>`;
+      return `<div style="padding:6px 22px;display:flex;align-items:baseline;gap:10px;
+                   border-bottom:1px solid var(--border);font-size:.82rem;">
+        <span style="font-family:'DM Mono',monospace;flex-shrink:0;">${icon}</span>
+        <span>${label}${note}</span>
+      </div>`;
+    }).join('');
+
+    // Reload song list in background
+    if (data.imported > 0) await loadSongs();
+
+  } catch (err) {
+    document.getElementById('batch-progress').textContent = 'Network error: ' + err.message;
+  }
+}
+
+function closeBatchModal(e) {
+  if (e && e.target.id !== 'batch-overlay') return;
+  document.getElementById('batch-overlay').style.display = 'none';
+}
 
 // ── File import (PDF / text chord sheets) ────────────────────
 let _importData = null;  // holds last server response
