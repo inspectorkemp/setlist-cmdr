@@ -17,105 +17,107 @@ The band leader controls everything from a PIN-protected web interface. Musician
 ## Features
 
 **Song library**
-Store your entire repertoire. Each song holds a title, artist, key, capo, tempo, duration, status, lyrics, chords in ChordPro format, and notes. Search by title or artist. Filter by status. Four status levels: Active, Needs Work, Maybe, and Retired.
+Store your entire repertoire. Each song holds: title, artist, key, capo, tempo, duration, status, lyrics, chords in ChordPro format, and notes. Search by title or artist. Filter by status. Four status levels: Active, Needs Work, Maybe, Retired.
 
-**Capo** is a first-class field. When set, all chord displays show the fingered shapes (what the guitarist actually plays) rather than the sounding pitch. A song in B with Capo 2 shows G-shape chords. The per-device transpose control applies on top of the capo offset.
+**Capo**
+Capo is a first-class field. When set, chord displays show the fingered shapes rather than the sounding pitch. A song in B with Capo 2 shows G-shape chords. The per-device transpose control applies on top of the capo offset.
 
 **ChordPro chord editor**
-Chords are stored using ChordPro notation with chord names in square brackets inline with lyrics. The song editor includes a fullscreen side-by-side editor with a live preview that updates as you type. Toggle between Lyrics and Chords view in the preview before saving. Press Escape or click Done to write back to the form.
+Chords are stored in ChordPro format with chord names in square brackets inline with lyrics. The song editor includes a fullscreen split editor with a live preview. A Convert button accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets and converts it to ChordPro automatically.
 
-A Convert button inside the editor accepts the common chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets, and converts it to ChordPro automatically.
+**Section markers**
+Section markers use the same bracket syntax as chords. Any token that is not a valid chord name is treated as a section marker: [Verse 1], [Chorus], [Bridge], [Pre-Chorus], [Outro], etc. Section headers render in amber with a ruled divider. A bare back-reference such as a second [Chorus] with no following content renders as a dimmed repeat cue at reduced opacity rather than duplicating the full text.
 
 **CSV import**
-Bulk-import songs from a spreadsheet. Download a template from the Songs toolbar to get the correct column format. Upload your CSV, map each column to the correct field using the column mapper, review the first few rows, and import. Supported fields: Title, Artist, Key, Tempo, Duration, and Status. Lyrics, chords, and notes must be added per song after import.
+Bulk-import songs from a spreadsheet. Download a template from the Songs toolbar, fill in your songs, upload the CSV, map each column to the correct field, and import. Supported fields: Title, Artist, Key, Tempo, Duration, Status. Lyrics, chords, and notes must be added per song after import.
 
-**File import (PDF and text chord sheets)**
-Import a chord sheet directly from the Songs toolbar using the ▲ Import button. Supported formats: `.pdf`, `.txt`, `.chopro`, `.cho`, `.crd`, `.chordpro`. The server extracts the text, auto-detects the title and artist from the first few lines, and opens a review modal where you can edit the content before creating the song. After import, the song editor opens automatically so you can tidy up the ChordPro. Born-digital PDFs (exported from a word processor or downloaded from a chord site) extract cleanly. Scanned image PDFs contain no extractable text and are not supported.
+**File import**
+Import a chord sheet using the Import button in the Songs toolbar. Supported formats: .pdf, .txt, .chopro, .cho, .crd, .chordpro, .pro. The server extracts the text, auto-detects title and artist from the first lines, and opens a review modal where you can edit before creating the song. Born-digital PDFs extract cleanly. Scanned image PDFs contain no extractable text and are not supported.
 
 **Setlists**
-Create and manage multiple setlists. Add songs from your library, drag to reorder, insert section labels between songs such as Opener or Slow Set, and see a running total duration. Rename by clicking the title. Clone any setlist as a starting point. Mark setlists Active or Inactive. Inactive setlists are hidden from the Live Control dropdown. The setlist list itself can be reordered by dragging.
+Create and manage multiple setlists. Add songs from your library, drag to reorder, insert section labels between songs, and see a running total duration. Clone any setlist as a starting point. Mark setlists Active or Inactive. The setlist list itself can be reordered by dragging.
 
 **Live Control**
-Select an active setlist and click Engage. All connected musician screens update instantly. Navigate with Prev and Next, or click any song in the queue to jump directly. Each musician sees the current song title, key, tempo, and a next-song ribbon. End the show with Stand Down to return all screens to standby.
+Select an active setlist and click Engage. All connected musician screens update instantly. Navigate with Prev and Next, or click any song in the queue to jump directly. End the show with Stand Down to return all screens to standby.
 
 **Rehearsal mode**
-Click Rehearse on any song in the Songs tab to push that song to all musician screens without starting a live show. The leader is taken directly to the Live Control stage view. Musicians see a blue Rehearsal banner at the top of their screen. End with the End Rehearsal button in the control bar.
+Click Rehearse on any song in the Songs tab to push that song to all musician screens without starting a live show. The leader goes directly to the stage view. Musicians see a teal Rehearsal banner. End with End Rehearsal in the control bar.
 
 **Confidence monitor**
-A dedicated full-screen display page at `/monitor` designed for a floor wedge or large display viewed from several feet away. Shows the current song title and key in very large type, followed by the full lyrics or chords, with a Next ribbon at the bottom. The monitor tracks the leader's scroll position in real time and reflects transpose changes immediately. No controls, no header chrome.
+A full-screen display page at /monitor designed for a floor wedge or large display. Shows the current song title, key, and BPM in large type, followed by the full lyrics or chords, with a Next ribbon at the bottom. Tracks the leader scroll position and transpose changes in real time.
 
-The monitor standby screen shows a QR code linking to `/monitor/setup` — a mobile-friendly settings page you can open on your phone to configure the display without touching the TV or editing URLs. Scan it, adjust the toggles, tap Apply, and the monitor updates instantly.
+The monitor standby screen shows a QR code linking to /monitor/setup. Scan it on your phone to configure the display without touching the TV or editing the URL. The leader can also push monitor settings remotely from the Settings modal.
 
-The leader can also push monitor settings remotely from the Settings modal without leaving the leader view.
+Monitor settings (all available via remote push, QR setup page, or URL params):
 
-URL parameters for the monitor:
-
-| Parameter | Values | Effect |
+| Setting | URL param | Effect |
 |---|---|---|
-| `mode` | `lyrics` (default), `chords` | Which view to show |
-| `fontscale` | e.g. `0.9`, `1.3` | Scale the base font size |
-| `portrait` | `1` | Portrait layout for a rotated display |
-| `fit` | `1` | Compact layout with auto-fit font scaling |
-| `cols` | `1` | Two-column layout |
-| `hc` | `1` | High contrast mode |
+| View mode | mode=chords or mode=lyrics | Which content to show (default: chords) |
+| Two columns | cols=1 | Side-by-side column layout |
+| Fit mode | fit=1 | Compact layout with auto-fit font scaling |
+| High contrast | hc=1 | Brighter text for washed-out displays |
+| Portrait (hardware) | portrait=1 | Layout adjustments for a physically rotated TV |
+| Rotate 90 degrees | (remote only) | Software rotation for landscape TVs showing portrait content |
+| Font scale | fontscale=1.3 | Multiply the base font size |
 
-Example: `http://192.168.1.100:8000/monitor?mode=chords&fit=1&cols=1`
-
-In fit mode, the layout is maximally compacted and the font is automatically scaled down until all content fits on screen, stopping at a minimum legible size. Combine with `cols=1` for the best chance of fitting a full song on one screen.
+**Rotate 90 degrees**
+Rotates the entire browser content 90 degrees clockwise using a CSS transform. Use this when the TV is in landscape mode but you want portrait content. No TV or OS settings need to change. Push this setting from the leader Settings modal or the /monitor/setup page.
 
 **Synced flash metronome**
-The leader starts the metronome and all connected devices flash in phase. Sync is achieved via an NTP-style clock calibration over WebSocket: each device exchanges 16 round-trip timestamps with the server on connect, discards the 8 with the worst round-trip times, and averages the rest to compute a precise clock offset. Re-syncs every 30 seconds with drift clamped to 20ms per cycle to avoid phase jumps mid-performance.
-
-Scheduling uses the Web Audio API where available, which runs in a separate thread immune to main-thread jank and background tab throttling. A date-based fallback handles cases where the audio context cannot be resumed. A radial amber overlay pulses at tempo with a brighter accent on beat 1. Auto-stops after a configurable timeout of 10, 15, 20, or 30 seconds.
+The leader starts the metronome and all connected devices flash in phase. Each device exchanges 16 round-trip timestamps with the server on connect, discards the 8 with the worst latency, and averages the rest to compute a clock offset. Re-syncs every 30 seconds. Uses the Web Audio API where available. Auto-stops after a configurable timeout of 10, 15, 20, or 30 seconds.
 
 **Signal messages**
-Send one-tap text alerts to all musician screens during a live show or rehearsal. Eight configurable slots mapped to F1 through F8 keyboard hotkeys. Default signals: RUSHING, DRAGGING, CHORUS, BRIDGE, KEEP GOING, WRAP IT UP, HOLD HERE, EYES ON ME. Labels are editable and saved per device. A large amber banner slides down on every musician screen and dismisses after 3 seconds.
+Send one-tap text alerts to all musician screens. Eight configurable slots mapped to F1 through F8. Default signals: RUSHING, DRAGGING, CHORUS, BRIDGE, KEEP GOING, WRAP IT UP, HOLD HERE, EYES ON ME. Labels are editable. A large amber banner appears on every musician screen and dismisses after 3 seconds.
 
-**Bluetooth page turner pedal — leader**
-Pair any Bluetooth page turner with the leader device and assign its keys in Settings. Four actions can be assigned independently: Next Song, Prev Song, Scroll Down, and Scroll Up. Three built-in presets cover the most common pedal brands: Arrow keys (AirTurn, PageFlip, Donner), Page Up/Down (iRig BlueTurn), and bracket keys. Scroll Down and Scroll Up move the content area 80% of its visible height per press.
+**Bluetooth page turner pedal - leader**
+Pair any Bluetooth page turner with the leader device and assign keys in Settings. Four assignable actions: Next Song, Prev Song, Scroll Down, Scroll Up. Three presets: Arrow keys (AirTurn, PageFlip, Donner), Page Up/Down (iRig BlueTurn), bracket keys.
 
-**Bluetooth page turner pedal — musician**
-Each musician can assign their own pedal independently via the ⚙ button in the musician header. Four assignable actions: Scroll Down, Scroll Up, Lyrics/Chords toggle, and Auto Scroll toggle. Two presets: Arrow keys and Page Up/Down. Settings are saved per device in the browser.
+**Bluetooth page turner pedal - musician**
+Each musician can assign their own pedal independently via the gear button in the musician header. Four assignable actions: Scroll Down, Scroll Up, Lyrics/Chords toggle, Auto Scroll toggle. Two presets: Arrow keys, Page Up/Down. Settings are saved per device.
 
 **Per-musician controls**
-Each musician independently controls: Lyrics/Chords view toggle, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view, including the two-column toggle.
+Each musician independently controls: Lyrics/Chords view toggle, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view.
 
-**Compact stage mode (leader)**
-A ⊡ button in the live control bar collapses all chrome to minimum height, maximising the content area. Saved across sessions.
+**Compact stage mode**
+A compact button in the leader live control bar collapses all chrome to minimum height, maximising the content area. Saved across sessions.
 
 **Musician roster**
 The leader sees a live count of connected musicians in the nav bar. Clicking it opens a popup showing each musician by name. The roster updates in real time.
 
-**PIN-protected leader interface**
-The leader page requires a PIN to access. The default PIN is `1234`. Change it on first login via Settings. Sessions last 24 hours and are stored in the browser. All state-changing operations require authentication. The musician page and monitor page are open without a PIN.
-
 **Band member roster**
-The leader manages a named list of band members from the Crew modal. These names appear as tap-to-join buttons on the musician name screen, so each person connects with one tap. Names are stored in the database. A freeform text input remains for guests.
+The leader manages a named list of band members from the Crew modal. Names appear as tap-to-join buttons on the musician name screen. A freeform text input remains for guests.
+
+**PIN-protected leader interface**
+The leader page requires a PIN. The default PIN is 1234. Change it via Settings. Sessions last 24 hours. The musician page and monitor page are open without a PIN.
 
 **Live state persistence**
-The current setlist, song index, and live status are written to the database on every change. If the server restarts mid-show, clients reconnecting receive the current state immediately with no manual recovery needed.
+The current setlist, song index, and live status are written to the database on every change. If the server restarts mid-show, reconnecting clients receive the current state immediately.
 
 **Database backup and restore**
-Download the live SQLite database directly from the leader nav bar. The file is timestamped automatically. Upload a backup to restore it. The server validates the file before replacing anything and automatically saves the current database before overwriting.
+Download the live SQLite database from the leader nav bar. Upload a backup to restore. The server validates the file before replacing anything and saves a backup before overwriting. Schema migrations run automatically on startup.
 
 **Font caching**
-By default the app loads fonts from Google Fonts. Run `bash setup-fonts.sh` once while the Pi has internet access to download and cache all fonts locally. After restarting the server, fonts load from the Pi with no external dependency. Falls back to Google Fonts automatically if the cache does not exist.
+By default fonts load from Google Fonts. Run setup-fonts.sh once while the Pi has internet access to cache all fonts locally.
 
 **iPad and Desktop modes**
-A toggle in the nav bar switches between iPad mode and Desktop mode. iPad mode uses larger touch targets, bigger fonts, and press feedback instead of hover states. Desktop mode is compact and mouse-optimized. Defaults to iPad mode. Saved per device.
+A toggle in the nav bar switches between iPad mode (larger touch targets, bigger fonts) and Desktop mode (compact, mouse-optimised). Defaults to iPad mode. Saved per device.
 
 **Progressive Web App**
-The leader page and musician page can each be installed to the home screen on iPad, iPhone, and Android. Each has its own manifest so the installed icon opens the correct URL. Launches full-screen with no browser chrome.
+The leader page and musician page can be installed to the home screen on iPad, iPhone, and Android. Each has its own manifest. Launches full-screen with no browser chrome.
+
+---
+
+## Requirements
+
+- Python 3.9 or newer
+- Works on Windows, macOS, and Linux for development
+- Raspberry Pi 3B or newer for production deployment
 
 ---
 
 ## Running on your PC
 
-Requires Python 3.9 or newer. Works on Windows, macOS, and Linux.
-
-If you are on Python 3.9 (the default on some older Windows installs), `run.py` automatically selects dependency versions compatible with 3.9. Python 3.10 or newer is recommended and required for the latest FastAPI versions. Download from https://python.org if needed.
-
-**Windows:** double-click `start.bat`, or from a terminal:
+**Windows:** double-click start.bat, or from a terminal:
 ```
 python run.py
 ```
@@ -125,26 +127,18 @@ python run.py
 python3 run.py
 ```
 
-On first run, `run.py` creates a virtual environment, installs all dependencies, starts the server, and opens the leader view in your browser. Subsequent runs skip the install step.
+On first run, run.py creates a virtual environment, installs all dependencies, starts the server, and opens the leader view in your browser. Subsequent runs skip the install step.
 
 ```bash
 python run.py --port 8080     # use a different port
 python run.py --no-browser    # skip auto-opening the browser
 ```
 
-To test with multiple musicians, open additional browser tabs at `http://localhost:8000/` and enter a different name in each.
-
-The database (`setlist.db`) is created in the project folder on first run and carries over when you move the folder to the Pi.
+To test with multiple musicians, open additional browser tabs at http://localhost:8000/ and enter a different name in each.
 
 ---
 
 ## Deploying to Raspberry Pi
-
-**Requirements:**
-- Raspberry Pi 3B+ or newer
-- Raspberry Pi OS 64-bit (Bookworm or Trixie)
-- Python 3.9 or newer
-- All devices on the same network
 
 **Setup:**
 ```bash
@@ -152,130 +146,93 @@ cd setlist-cmdr
 bash setup.sh
 ```
 
-This creates the virtual environment, installs dependencies, and registers a systemd service that starts Setlist CMDR automatically on every boot.
+This creates the virtual environment, installs all dependencies, and registers a systemd service that starts Setlist CMDR automatically on every boot.
 
 **Finding the Pi IP address:**
 ```bash
 hostname -I
 ```
 
-Open the leader interface at `http://<pi-ip>:8000/leader` and the musician page at `http://<pi-ip>:8000/`.
+Open the leader interface at http://pi-ip:8000/leader and the musician page at http://pi-ip:8000/.
+
+**After deploying updated files, restart the service:**
+```bash
+sudo systemctl restart setlist-cmdr
+```
+
+If changes are not appearing in the monitor browser after a restart, clear cached images and files in the browser before reloading.
 
 ---
 
 ## Confidence monitor setup
 
-Open `http://<pi-ip>:8000/monitor` on any browser connected to the same network.
+Open http://pi-ip:8000/monitor on any browser connected to the same network.
 
-**Configuring the monitor display** — three ways, no SSH required:
+**Three ways to configure the display without SSH:**
 
-1. **QR code (easiest):** When no show is active the monitor standby screen shows a QR code. Scan it on your phone, adjust the settings, tap Apply. The monitor updates immediately and remembers the settings across reboots.
+1. QR code: When no show is active, the standby screen shows a QR code. Scan it on your phone, adjust the settings, tap Apply.
+2. Leader remote push: Open Settings in the leader nav bar, scroll to Confidence Monitor, adjust the toggles, click Push to Monitor.
+3. Setup page: Open http://pi-ip:8000/monitor/setup in any browser on the network.
 
-2. **Leader remote push:** Open Settings in the leader nav bar, scroll to the Confidence Monitor section, adjust the toggles, and click Push to Monitor. Takes effect instantly on all connected monitors.
+**Kiosk setup for a dedicated Pi:**
 
-3. **Setup page directly:** Open `http://<pi-ip>:8000/monitor/setup` in any browser on the same network.
-
-**Kiosk setup for a dedicated Pi:
-
-For a dedicated floor wedge Pi running Chromium in kiosk mode, add a file at `/etc/xdg/autostart/monitor.desktop`:
+Add a file at /etc/xdg/autostart/monitor.desktop:
 
 ```
 [Desktop Entry]
 Type=Application
 Name=Monitor
-Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars http://<main-pi-ip>:8000/monitor
+Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars http://main-pi-ip:8000/monitor
 ```
 
-The monitor Pi needs no server of its own. It just opens a browser pointed at the main Pi.
-
-Add URL parameters to the kiosk URL to configure the display. For example, fit mode with two-column chords view:
-
-```
-Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars \
-  "http://<main-pi-ip>:8000/monitor?mode=chords&fit=1&cols=1"
-```
+The monitor Pi needs no server of its own. It opens a browser pointed at the main Pi.
 
 ---
 
 ## First login
 
-The default leader PIN is `1234`. After logging in:
-
-1. Click **Settings** in the nav bar
-2. Enter a new PIN and click Save
-3. You will be logged out and prompted to log in again with the new PIN
-
-To lock the leader page without closing the browser, click **Settings** then **Lock / Log Out**.
+The default leader PIN is 1234. After logging in, go to Settings and set a new PIN.
 
 ---
 
 ## Setting up band members
 
-1. Click **Crew** in the nav bar
+1. Click Crew in the nav bar
 2. Type a name and press Enter or click Add
 3. Repeat for each band member
-
-Members appear as large tap buttons on the musician name screen. Remove a member by clicking the X next to their name in the Crew modal.
-
----
-
-## Bluetooth pedal setup
-
-1. Pair the pedal with the device running the leader page via Bluetooth in OS settings
-2. Open **Settings** in the nav bar and scroll to Bluetooth Page Turner Pedal
-3. Click a field and press the pedal button to assign it
-4. Repeat for each button
-
-Three presets handle the most common configurations: Arrow keys (AirTurn, PageFlip, Donner), Page Up/Down (iRig BlueTurn), and bracket keys. Scroll Down and Scroll Up are unassigned by default since most pedals have two buttons. If you have a four-button pedal, assign all four independently.
-
----
-
-## Installing as a PWA
-
-**iPad or iPhone (Safari only):**
-1. Open the correct URL in Safari
-2. Tap the Share button
-3. Tap Add to Home Screen
-4. Tap Add
-
-**Android (Chrome):**
-1. Open the URL in Chrome
-2. Tap the three-dot menu
-3. Tap Add to Home Screen
-
-The leader page and musician page install separately. Each person installs whichever applies to them.
 
 ---
 
 ## Band leader workflow
 
-1. Open `http://<pi-ip>:8000/leader` and log in
-2. Go to **Songs** and build your library. Set tempo and key so the metronome and transpose work correctly
-3. Go to **Setlists** and create a setlist for the show. Add songs, drag to reorder, add section labels
-4. Mark setlists you are not using as Inactive
-5. Go to **Live Control**, select your setlist, and click **Engage**
-6. Use Prev and Next to navigate, or click any song in the queue. Use the signal bar or F1 through F8 to send messages. Click Flash to start the synced metronome
+1. Open http://pi-ip:8000/leader and log in
+2. Go to Songs and build your library. Set tempo and key for metronome and transpose to work correctly.
+3. Go to Setlists and create a setlist. Add songs, drag to reorder, add section labels.
+4. Mark setlists you are not using as Inactive.
+5. Go to Live Control, select your setlist, and click Engage.
+6. Use Prev and Next to navigate, or click any song in the queue.
+7. Use the signal bar or F1 through F8 to send messages to musicians.
 
 ---
 
 ## Rehearsal workflow
 
-1. Go to **Songs**
-2. Click **Rehearse** on any song
-3. The leader view switches to the full stage immediately and all musician screens show the song with a blue Rehearsal banner
-4. Click **End Rehearsal** in the control bar when done
+1. Go to Songs
+2. Click Rehearse on any song
+3. All musician screens show the song with a teal Rehearsal banner
+4. Click End Rehearsal in the control bar when done
 
 ---
 
 ## Musician workflow
 
 1. Connect to the same network as the Pi
-2. Open `http://<pi-ip>:8000/` in a browser
+2. Open http://pi-ip:8000/ in a browser
 3. Tap your name from the crew buttons, or type a name and tap Join
 4. Wait on the Standby screen until the leader engages a show or starts a rehearsal
-5. Use the controls bar to adjust: LYRICS/CHORDS toggle, font size, line spacing (≡), two-column layout (⫴), high contrast (◐), transpose (♭/♯), and AUTO scroll. All settings are saved per device.
-6. Tap anywhere in the content area to hide the controls bar and maximise reading space. Tap again to bring it back.
-7. To use a Bluetooth pedal, tap the ⚙ button in the header, pair the pedal via the device OS Bluetooth settings, then assign keys in the Pedal Settings modal.
+5. Use the controls bar to adjust view, font size, line spacing, two-column layout, high contrast, transpose, and auto scroll. All settings are saved per device.
+6. Tap anywhere in the content area to hide the controls bar. Tap again to bring it back.
+7. To use a Bluetooth pedal, tap the gear button in the header and assign keys in the Pedal Settings panel.
 
 ---
 
@@ -288,9 +245,9 @@ Wrap chord names in square brackets before the syllable where they are played:
 [G]Here comes the [Em]sun, and I [C]say it's all-[D]right
 ```
 
-Chords are shown on their own line above the lyric in the traditional lead-sheet layout. Lyrics view strips all chord markers and shows clean text only. Each device transposes independently.
+Chords appear on their own line above the lyric. Lyrics view strips all chord markers. Each device transposes independently.
 
-**Section markers** use the same bracket syntax but contain a section name rather than a chord. Any token that is not a valid chord name is treated as a section marker:
+**Section markers** use the same bracket syntax:
 
 ```
 [Verse 1]
@@ -305,32 +262,45 @@ Chords are shown on their own line above the lyric in the traditional lead-sheet
 [Chorus]
 ```
 
-The second `[Chorus]` with no content following it is a back-reference. It renders as a dimmed repeat cue showing the chorus content at reduced opacity, rather than duplicating the full text. This keeps long songs compact while keeping the structure visible.
+The second [Chorus] with no following content is a back-reference. It renders as a dimmed repeat cue rather than duplicating the full text.
 
-Section headers render in amber with a ruled divider, making them easy to spot while scanning.
-
-**The Convert tool** in the fullscreen chord editor accepts the standard chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets:
+**The Convert tool** accepts chords-above-lyrics format:
 
 ```
 G           Em          C      D
 Here comes the sun, doo doo doo doo
 ```
 
-Paste it in, click Convert to ChordPro, and the chord positions are mapped to the lyric text automatically.
+Paste it in, click Convert to ChordPro, and chord positions are mapped to the lyric text automatically.
+
+---
+
+## File import
+
+Click Import in the Songs toolbar and select a file.
+
+| Extension | Notes |
+|---|---|
+| .pdf | Born-digital PDFs only. Scanned image PDFs have no extractable text. |
+| .txt | Plain text. Use the Convert tool to convert to ChordPro. |
+| .chopro / .cho / .crd / .chordpro / .pro | ChordPro format, imports directly. |
+
+A preview modal lets you edit the content and choose whether to place it in the Chords or Lyrics field before creating the song. The song editor opens automatically after import.
+
+**Pi note:** pdfplumber is installed automatically by setup.sh. On an existing Pi set up before file import was added:
+```bash
+source venv/bin/activate && pip install pdfplumber
+```
 
 ---
 
 ## CSV import
 
-1. Click **Template** in the Songs toolbar to download an example file
+1. Click Template in the Songs toolbar to download an example file
 2. Fill in your songs and save as CSV
-3. Click **CSV** in the toolbar and select your file
+3. Click CSV in the toolbar and select your file
 4. Map each column to the correct field
 5. Review the preview and click Import
-
-Lyrics, chords, and notes are not supported by the importer and must be entered per song afterward.
-
-**Supported fields:**
 
 | Field | Notes |
 |---|---|
@@ -343,34 +313,11 @@ Lyrics, chords, and notes are not supported by the importer and must be entered 
 
 ---
 
-## File import
-
-Click **▲ Import** in the Songs toolbar and select a file. Supported formats:
-
-| Extension | Notes |
-|---|---|
-| `.pdf` | Born-digital PDFs only. Scanned image PDFs have no extractable text. |
-| `.txt` | Plain text chord sheets. Use the Convert tool to convert to ChordPro. |
-| `.chopro` / `.cho` / `.crd` / `.chordpro` / `.pro` | ChordPro files import directly. |
-
-The server extracts the text and returns a best-guess title and artist based on the first few lines. A preview modal lets you edit the content and choose whether to place it in the Chords or Lyrics field before creating the song. After creation the song editor opens automatically.
-
-If the text is already in ChordPro format (contains `[Chord]` markers), a "ChordPro detected" badge appears and the Chords field is pre-selected. If it's in chords-above-lyrics format, place it in the Chords field and use the Convert button in the fullscreen editor to convert it.
-
-**Pi note:** `pdfplumber` must be installed. It is included in `requirements.txt` and installed automatically by `setup.sh` and `run.py`. On an existing Pi that was set up before this feature was added, run:
-```bash
-source venv/bin/activate && pip install pdfplumber
-```
-
----
-
 ## Database backup and restore
 
 **From the browser:**
-Download: click the **DB** button in the leader nav bar. The file is named with a timestamp.
-Restore: click the upload **DB** button, select a `.db` file, and confirm. The server validates it, saves a backup of the current database, and reloads.
-
-The database uses versioned schema migrations. On every startup the server checks the current schema version and runs any pending migrations automatically. No manual SQL is required when upgrading. If a migration fails the server prints an error and exits cleanly rather than starting against a partially-migrated database.
+Download: click the DB button in the leader nav bar.
+Restore: click the upload DB button, select a .db file, and confirm.
 
 **On the Pi:**
 ```bash
@@ -392,7 +339,7 @@ bash setup-fonts.sh
 sudo systemctl restart setlist-cmdr
 ```
 
-Downloads Bebas Neue, DM Mono, and DM Sans from Google Fonts and stores them in `static/fonts/`. After restarting, all fonts load from the Pi with no internet required. The app falls back to Google Fonts automatically if the cache does not exist.
+Downloads Bebas Neue, DM Mono, and DM Sans from Google Fonts into static/fonts/. After restarting, fonts load from the Pi with no internet required.
 
 ---
 
@@ -422,29 +369,23 @@ sudo journalctl -u     setlist-cmdr -f
 
 ```
 setlist-cmdr/
-├── main.py                    FastAPI server, all endpoints and WebSocket
-├── run.py                     Cross-platform launcher
-├── requirements.txt           Python dependencies
-├── setlist.db                 SQLite database, auto-created on first run
-├── setup.sh                   First-time Pi setup
-├── setup-fonts.sh             Optional font cache setup
-├── start.bat                  Windows quick-start
-├── start.sh                   Linux and macOS quick-start
-└── static/
-    ├── leader.html            Band leader interface
-    ├── leader.css             Leader styles
-    ├── musician.html          Musician stage view
-    ├── monitor.html           Confidence monitor display
-    ├── sw.js                  PWA service worker
-    ├── manifest-leader.json   PWA manifest for leader
-    ├── manifest-musician.json PWA manifest for musicians
-    ├── fonts/                 Locally cached fonts (after setup-fonts.sh)
-    └── img/
-        ├── logo_large.png
-        ├── logo_bottom_right_wide.png
-        ├── logo_top_right.png
-        ├── logo_bottom_left.png
-        ├── icon-192.png
-        ├── icon-512.png
-        └── apple-touch-icon.png
++-- main.py                    FastAPI server, all endpoints and WebSocket
++-- run.py                     Cross-platform launcher
++-- requirements.txt           Python dependencies
++-- setlist.db                 SQLite database, auto-created on first run
++-- setup.sh                   First-time Pi setup
++-- setup-fonts.sh             Optional font cache setup
++-- start.bat                  Windows quick-start
++-- start.sh                   Linux and macOS quick-start
++-- static/
+    +-- leader.html            Band leader interface
+    +-- leader.css             Leader styles
+    +-- musician.html          Musician stage view
+    +-- monitor.html           Confidence monitor display
+    +-- monitor-setup.html     Monitor configuration page
+    +-- sw.js                  PWA service worker
+    +-- manifest-leader.json   PWA manifest for leader
+    +-- manifest-musician.json PWA manifest for musicians
+    +-- fonts/                 Locally cached fonts (after setup-fonts.sh)
+    +-- img/                   Logos and icons
 ```
