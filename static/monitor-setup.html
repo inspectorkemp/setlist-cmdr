@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor Setup — Setlist CMDR</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d0d12;
+    --surface: #14141c;
+    --card:    #1c1c28;
+    --border:  #2a2a3a;
+    --text:    #e8e8f0;
+    --dim:     #666680;
+    --amber:   #f59e0b;
+    --amber-glow: rgba(245,158,11,.12);
+    --green:   #22c55e;
+    --red:     #ef4444;
+    --teal:    #2dd4bf;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+
+  header img { height: 32px; width: auto; }
+
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 2px;
+    color: var(--amber);
+    flex: 1;
+  }
+
+  #conn-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--dim);
+    flex-shrink: 0;
+    transition: background .3s, box-shadow .3s;
+  }
+  #conn-dot.on  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  #conn-dot.off { background: var(--red); }
+
+  main {
+    flex: 1;
+    padding: 20px 16px 40px;
+    max-width: 520px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    color: var(--amber);
+    margin-bottom: 14px;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .toggle-row:last-child { border-bottom: none; }
+
+  .toggle-label { font-size: .9rem; }
+  .toggle-hint  { font-size: .72rem; color: var(--dim); margin-top: 2px; }
+
+  /* iOS-style toggle */
+  .toggle {
+    position: relative;
+    width: 52px;
+    height: 30px;
+    flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 15px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle input:checked + .toggle-track { background: var(--amber); }
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 24px; height: 24px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  .toggle input:checked + .toggle-track::after {
+    transform: translateX(22px);
+  }
+
+  /* Segmented control for mode */
+  .seg {
+    display: flex;
+    background: var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .seg button {
+    flex: 1;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    color: var(--dim);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .82rem;
+    font-weight: 600;
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+  }
+  .seg button.active {
+    background: var(--amber);
+    color: #000;
+  }
+
+  /* Font scale slider */
+  #fontscale-display {
+    font-family: 'DM Mono', monospace;
+    font-size: .88rem;
+    color: var(--amber);
+    min-width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  input[type=range] {
+    flex: 1;
+    accent-color: var(--amber);
+    cursor: pointer;
+  }
+
+  /* Apply button */
+  #apply-btn {
+    width: 100%;
+    background: var(--amber);
+    border: none;
+    border-radius: 12px;
+    color: #000;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.3rem;
+    letter-spacing: 2px;
+    padding: 16px;
+    cursor: pointer;
+    transition: opacity .15s;
+    margin-bottom: 12px;
+  }
+  #apply-btn:active { opacity: .75; }
+  #apply-btn:disabled { opacity: .4; cursor: default; }
+
+  #status-msg {
+    text-align: center;
+    font-size: .82rem;
+    color: var(--dim);
+    min-height: 1.2em;
+  }
+  #status-msg.ok  { color: var(--green); }
+  #status-msg.err { color: var(--red); }
+
+  a.monitor-link {
+    display: block;
+    text-align: center;
+    color: var(--amber);
+    font-size: .82rem;
+    text-decoration: none;
+    padding: 8px;
+    opacity: .7;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="/static/img/logo_large.png" alt="Setlist CMDR">
+  <h1>MONITOR SETUP</h1>
+  <div id="conn-dot"></div>
+</header>
+
+<main>
+
+  <!-- View mode -->
+  <div class="section">
+    <div class="section-title">View Mode</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Display</div>
+        <div class="toggle-hint">What the monitor shows</div>
+      </div>
+      <div class="seg" id="mode-seg">
+        <button data-val="lyrics" onclick="setMode('lyrics')">LYRICS</button>
+        <button data-val="chords" onclick="setMode('chords')">CHORDS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layout -->
+  <div class="section">
+    <div class="section-title">Layout</div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Two Columns</div>
+        <div class="toggle-hint">Side-by-side halves — fits more on screen</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="tog-cols">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Fit Mode</div>
+        <div class="toggle-hint">Auto-shrink font until whole song fits on screen</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="tog-fit">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Portrait (hardware)</div>
+        <div class="toggle-hint">TV is physically rotated by the OS — adjusts layout proportions</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="tog-portrait">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Rotate 90°</div>
+        <div class="toggle-hint">Rotates browser content in software — TV stays in landscape mode</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="tog-rotated">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+
+    <div class="toggle-row" style="align-items:flex-start;padding-top:12px;">
+      <div style="flex:1;">
+        <div class="toggle-label">Font Scale</div>
+        <div class="toggle-hint">Multiplier on top of base size</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;width:200px;flex-shrink:0;">
+        <input type="range" id="fontscale-slider"
+               min="0.5" max="2.0" step="0.05" value="1.0"
+               oninput="updateFontscale(this.value)">
+        <div id="fontscale-display">1.0×</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Appearance -->
+  <div class="section">
+    <div class="section-title">Appearance</div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">High Contrast</div>
+        <div class="toggle-hint">Brighter text and chords for washed-out displays</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="tog-hc">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+  </div>
+
+  <!-- Apply -->
+  <button id="apply-btn" onclick="applyConfig()" disabled>
+    APPLY TO MONITOR
+  </button>
+  <div id="status-msg">Connecting…</div>
+
+  <a class="monitor-link" href="/monitor">← Back to monitor</a>
+
+</main>
+
+<script>
+// ── State ─────────────────────────────────────────────────────
+let cfg = {
+  mode:      'chords',
+  cols:      false,
+  fit:       false,
+  hc:        false,
+  fontscale: 1.0,
+};
+let ws = null;
+
+// ── UI helpers ────────────────────────────────────────────────
+function setMode(val) {
+  cfg.mode = val;
+  document.querySelectorAll('#mode-seg button').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
+function updateFontscale(val) {
+  cfg.fontscale = parseFloat(val);
+  document.getElementById('fontscale-display').textContent =
+    cfg.fontscale.toFixed(2).replace(/\.?0+$/, '') + '×';
+}
+
+function readToggles() {
+  cfg.cols     = document.getElementById('tog-cols').checked;
+  cfg.fit      = document.getElementById('tog-fit').checked;
+  cfg.hc       = document.getElementById('tog-hc').checked;
+  cfg.portrait = document.getElementById('tog-portrait').checked;
+  cfg.rotated  = document.getElementById('tog-rotated').checked;
+}
+
+function applyUI(c) {
+  setMode(c.mode || 'chords');
+  document.getElementById('tog-cols').checked     = !!c.cols;
+  document.getElementById('tog-fit').checked      = !!c.fit;
+  document.getElementById('tog-hc').checked       = !!c.hc;
+  document.getElementById('tog-portrait').checked = !!c.portrait;
+  document.getElementById('tog-rotated').checked  = !!c.rotated;
+  const fs = parseFloat(c.fontscale) || 1.0;
+  document.getElementById('fontscale-slider').value = fs;
+  updateFontscale(fs);
+  cfg = { ...cfg, ...c };
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    setDot('on');
+    setStatus('Connected — adjust settings and tap Apply', '');
+    document.getElementById('apply-btn').disabled = false;
+  };
+
+  ws.onmessage = e => {
+    try {
+      const msg = JSON.parse(e.data);
+      // When we first connect, server sends back the current monitor config
+      if (msg.type === 'monitor_config') {
+        applyUI(msg);
+      }
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    setDot('off');
+    setStatus('Disconnected — trying to reconnect…', '');
+    document.getElementById('apply-btn').disabled = true;
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+function applyConfig() {
+  readToggles();
+  if (!ws || ws.readyState !== 1) {
+    setStatus('Not connected — cannot apply', 'err');
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'monitor_config', ...cfg }));
+  setStatus('Applied ✓', 'ok');
+  setTimeout(() => setStatus('Connected — adjust settings and tap Apply', ''), 2500);
+}
+
+function setDot(s) {
+  document.getElementById('conn-dot').className = s === 'on' ? 'on' : 'off';
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = cls || '';
+}
+
+connect();
+</script>
+</body>
+</html>
