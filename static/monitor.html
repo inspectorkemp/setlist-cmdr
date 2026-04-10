@@ -26,7 +26,7 @@ html, body {
 
 /* ── Status bar ──────────────────────────────────────────────── */
 #status-bar {
-  position:fixed; top:0; left:0; right:0; height:6px;
+  position:absolute; top:0; left:0; right:0; height:6px;
   background:var(--border); z-index:100; flex-shrink:0;
 }
 #status-bar .fill {
@@ -38,7 +38,7 @@ html, body {
 
 /* ── Standby ─────────────────────────────────────────────────── */
 #standby {
-  position:fixed; inset:0; display:flex; flex-direction:column;
+  position:absolute; inset:0; display:flex; flex-direction:column;
   align-items:center; justify-content:center; gap:32px;
 }
 #standby img { width:clamp(200px,22vw,380px); height:auto; opacity:.35; }
@@ -169,7 +169,7 @@ body.hi-contrast #content .cp-chords { color:#ffcc00; font-weight:700; }
 
 /* Signal banner */
 #signal-overlay {
-  position:fixed; top:0; left:0; right:0; z-index:900;
+  position:absolute; top:0; left:0; right:0; z-index:900;
   display:flex; align-items:flex-start; justify-content:center;
   padding:clamp(16px,3vh,36px);
   pointer-events:none;
@@ -278,9 +278,60 @@ body.portrait #signal-banner {
   font-size:clamp(2rem,8vw,6rem);
 }
 
+/* ── Rotation wrapper — always fills viewport ───────────────── */
+#rotate-wrap {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Software rotation mode (body.rotated) ──────────────────────
+   Rotates #rotate-wrap 90° clockwise so landscape browser content
+   appears portrait. The wrap gets swapped dimensions, is positioned
+   at top-left, rotated, then translated up by its own height so it
+   lands flush in the viewport.
+   Use this when the TV/OS display rotation has NOT been set.       */
+body.rotated {
+  overflow: hidden;
+}
+body.rotated #rotate-wrap {
+  position: fixed;
+  top:  0;
+  left: 0;
+  width:  100vh;
+  height: 100vw;
+  transform-origin: top left;
+  transform: rotate(90deg) translateY(-100%);
+  overflow: hidden;
+  will-change: transform;
+  outline: 4px solid red; /* DEBUG — remove after confirming rotation works */
+}
+/* vw/vh are swapped after rotation — adjust font sizes */
+body.rotated #song-title {
+  font-size: clamp(2.5rem, 5vh, 7rem);
+}
+body.rotated #song-meta {
+  font-size: clamp(.9rem, 2vh, 2rem);
+}
+body.rotated #content {
+  font-size: clamp(1.2rem, 2.8vh, 3.5rem);
+}
+body.rotated #content-wrap {
+  padding: clamp(12px,1.5vh,28px) clamp(20px,3vh,44px);
+}
+body.rotated #next-lbl,
+body.rotated #next-title {
+  font-size: clamp(.9rem, 2vh, 1.8rem);
+}
+body.rotated.fit #content {
+  font-size: clamp(1rem, 2.5vh, 3rem);
+  line-height: 1.25;
+}
+
 /* Metronome flash overlay */
 #metro-flash {
-  position:fixed; inset:0; pointer-events:none; z-index:500;
+  position:absolute; inset:0; pointer-events:none; z-index:500;
   opacity:0; transition:opacity 80ms ease-out;
 }
 #metro-flash.beat { opacity:1; transition:none; }
@@ -288,6 +339,7 @@ body.portrait #signal-banner {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
+<div id="rotate-wrap">
 
 <div id="status-bar"><div class="fill standby" id="status-fill"></div></div>
 
@@ -333,11 +385,11 @@ const params    = new URLSearchParams(location.search);
 let viewMode    = params.get('mode') === 'chords' ? 'chords' : 'lyrics';
 // _monitorViewMode lets applyMonitorConfig override viewMode at runtime
 let _monitorViewMode = viewMode;
-const fontScale = parseFloat(params.get('fontscale')) || 1;
-const portrait  = params.get('portrait') === '1';
-const fitMode   = params.get('fit') === '1';
-const colMode   = params.get('cols') === '1';
-const hcMode    = params.get('hc') === '1';
+let fontScale   = parseFloat(params.get('fontscale')) || 1;
+let portrait    = params.get('portrait') === '1';
+let fitMode     = params.get('fit') === '1';
+let colMode     = params.get('cols') === '1';
+let hcMode      = params.get('hc') === '1';
 
 if (portrait) document.body.classList.add('portrait');
 if (fitMode)  document.body.classList.add('fit');
@@ -835,25 +887,37 @@ function applyMonitorConfig(msg) {
   const cols      = msg.cols      !== undefined ? !!msg.cols     : document.body.classList.contains('two-col');
   const fit       = msg.fit       !== undefined ? !!msg.fit      : document.body.classList.contains('fit');
   const hc        = msg.hc        !== undefined ? !!msg.hc       : document.body.classList.contains('hi-contrast');
+  const port      = msg.portrait  !== undefined ? !!msg.portrait : portrait;
+  const rotated   = msg.rotated   !== undefined ? !!msg.rotated  : document.body.classList.contains('rotated');
   const fontscale = msg.fontscale !== undefined ? parseFloat(msg.fontscale) || 1.0 : 1.0;
 
   // Persist (without the type field)
-  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, fontscale }));
+  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, portrait: port, rotated, fontscale }));
 
   // Apply mode
   viewMode = mode;
   _monitorViewMode = mode;
 
-  // Body class toggles
+  // Portrait — update the module-level variable too so font scale calc is correct
+  portrait = port;
+
+  // Body class toggles — these are the source of truth for render functions
   document.body.classList.toggle('two-col',     cols);
   document.body.classList.toggle('fit',         fit);
   document.body.classList.toggle('hi-contrast', hc);
+  document.body.classList.toggle('portrait',    port);
+  document.body.classList.toggle('rotated',     rotated);
+  // Keep module-level vars in sync for any code that still reads them
+  fitMode    = fit;
+  colMode    = cols;
+  hcMode     = hc;
+  fontScale  = fontscale;
 
   // Font scale
   const el = document.getElementById('content');
   if (el) {
     if (fontscale !== 1.0) {
-      const base = portrait
+      const base = port
         ? (fit ? 'clamp(1rem,3.2vw,4rem)' : 'clamp(1.4rem,4.2vw,5rem)')
         : (fit ? 'clamp(1rem,2.4vw,2.6rem)' : 'clamp(1.6rem,3.2vw,3.2rem)');
       el.style.fontSize = 'calc(' + base + ' * ' + fontscale + ')';
@@ -895,6 +959,12 @@ function initQR() {
     const saved = localStorage.getItem('monitor_cfg');
     if (saved) applyMonitorConfig(JSON.parse(saved));
   } catch {}
+  // If portrait was set via URL param, make sure it's in saved config too
+  if (portrait && !localStorage.getItem('monitor_cfg')) {
+    localStorage.setItem('monitor_cfg', JSON.stringify({
+      mode: viewMode, cols: false, fit: false, hc: false, portrait: true, fontscale: 1.0
+    }));
+  }
   // Generate QR after a brief delay to let QRCode lib load
   setTimeout(initQR, 300);
 })();
@@ -922,9 +992,14 @@ function renderSong() {
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   }
-  el.innerHTML = colMode ? splitToColumns(html) : html;
+  // Always read live state from body classes — these are updated by
+  // applyMonitorConfig and survive WS reconnects via localStorage
+  const _colMode = document.body.classList.contains('two-col');
+  const _fitMode = document.body.classList.contains('fit');
 
-  if (fitMode) requestAnimationFrame(() => requestAnimationFrame(autoFitContent));
+  el.innerHTML = _colMode ? splitToColumns(html) : html;
+
+  if (_fitMode) requestAnimationFrame(() => requestAnimationFrame(autoFitContent));
 }
 
 function showStage(isRehearsal) {
@@ -1087,5 +1162,6 @@ function applyScroll(pct) {
   } catch {}
 })();
 </script>
+</div><!-- #rotate-wrap -->
 </body>
 </html>
