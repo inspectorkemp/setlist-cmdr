@@ -52,7 +52,7 @@ Monitor settings (all available via remote push, QR setup page, or URL params):
 
 | Setting | URL param | Effect |
 |---|---|---|
-| View mode | mode=chords, mode=lyrics, mode=consol | Which content to show (default: chords) |
+| View mode | mode=chords, mode=lyrics, mode=consol, mode=chordsonly | Which content to show (default: chords) |
 | Two columns | cols=1 | Side-by-side column layout |
 | Fit mode | fit=1 | Compact layout with auto-fit font scaling |
 | High contrast | hc=1 | Brighter text for washed-out displays |
@@ -80,7 +80,7 @@ Each musician can assign their own pedal independently via the gear button in th
 **Per-musician controls**
 Each musician independently controls: view mode, font size slider, line spacing (Normal/Tight/Loose), two-column layout, high contrast mode, transpose up or down by up to 11 semitones, and autoscroll. All preferences are saved per device. The band leader has the same controls in their stage view.
 
-The view mode button cycles through three options: Lyrics (plain text, no chords), Chords (chord-above-lyric layout), and Consolidated (each unique section shown once with all repeats omitted). Consolidated is useful for long songs where the structure is already known.
+The view mode button cycles through four options: Lyrics (plain text, no chords), Chords (chord-above-lyric layout), Consolidated (each unique section shown once with all repeats omitted), and Harmony (chord names and section markers only, no lyric text). Harmony is useful for players who know the words and just need the harmonic structure at a glance.
 
 **Compact stage mode**
 A compact button in the leader live control bar collapses all chrome to minimum height, maximising the content area. Saved across sessions.
