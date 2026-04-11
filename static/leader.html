@@ -492,6 +492,7 @@ if ('serviceWorker' in navigator) {
               <option value="chords">Chords</option>
               <option value="lyrics">Lyrics</option>
               <option value="consol">Consolidated</option>
+              <option value="chordsonly">Melody (chords only)</option>
             </select>
           </div>
           <div>
@@ -2180,6 +2181,75 @@ function consolidatedHTML(text, xpSemitones, mode) {
   return out.join('') || '<span class="cp-empty">No content for this song.</span>';
 }
 
+function chordsOnlyHTML(text, xpSemitones) {
+  if (!text) return '';
+  const lines      = text.split('\n');
+  const sectionMap = _buildSectionMap(lines);
+  const out        = [];
+  let i = 0;
+
+  function extractChords(blockLines) {
+    const names = [];
+    for (const line of blockLines) {
+      if (!line.includes('[')) continue;
+      let cursor = 0;
+      while (cursor < line.length) {
+        if (line[cursor] === '[') {
+          const close = line.indexOf(']', cursor);
+          if (close === -1) { cursor++; continue; }
+          const token = line.slice(cursor + 1, close);
+          if (_isChord(token)) {
+            names.push(xpSemitones ? xpChord(token, xpSemitones) : token);
+          }
+          cursor = close + 1;
+        } else { cursor++; }
+      }
+    }
+    return names;
+  }
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (_isSectionLine(line)) {
+      const label   = _sectionLabel(line);
+      const content = sectionMap[label] || [];
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+      if (!hasContent && content.length > 0) {
+        // bare back-reference — show dimmed chord flow
+        const chords = extractChords(content);
+        if (chords.length > 0) {
+          out.push('<div class="cp-section-ref"><span class="cp-section-label">' + escHtml(label) + '</span><span class="cp-section-repeat">(repeat)</span></div>');
+          out.push('<div class="cp-repeat-content"><div class="cp-chords-only">' + chords.map(c => '<span class="co-chord">' + escHtml(c) + '</span>').join('') + '</div></div>');
+        }
+        i++;
+        while (i < lines.length && lines[i].trim() === '') i++;
+      } else {
+        out.push('<div class="cp-section"><span class="cp-section-label">' + escHtml(label) + '</span></div>');
+        i++;
+        const block = [];
+        while (i < lines.length && !_isSectionLine(lines[i])) { block.push(lines[i]); i++; }
+        const chords = extractChords(block);
+        if (chords.length > 0) {
+          out.push('<div class="cp-chords-only">' + chords.map(c => '<span class="co-chord">' + escHtml(c) + '</span>').join('') + '</div>');
+        }
+      }
+    } else {
+      const chords = extractChords([line]);
+      if (chords.length > 0) {
+        out.push('<div class="cp-chords-only">' + chords.map(c => '<span class="co-chord">' + escHtml(c) + '</span>').join('') + '</div>');
+      }
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No chord content for this song.</span>';
+}
+
+
 function lRenderSong() {
   if (!lSong) {
     document.getElementById('l-song-content').innerHTML =
@@ -2216,6 +2286,10 @@ function lRenderSong() {
     const raw = lSong.chords || lSong.lyrics || '';
     html = consolidatedHTML(raw, dispXp, 'chords') ||
       '<span class="cp-empty">No content added for this song.</span>';
+  } else if (lMode === 'chordsonly') {
+    const raw = lSong.chords || lSong.lyrics || '';
+    html = chordsOnlyHTML(raw, dispXp) ||
+      '<span class="cp-empty">No chord content for this song.</span>';
   } else if (lMode === 'lyrics') {
     const raw = lSong.lyrics || lSong.chords || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
@@ -2265,10 +2339,12 @@ function lApplyColumns() {
 }
 
 function lToggleMode() {
-  lMode = lMode === 'lyrics' ? 'chords' : lMode === 'chords' ? 'consol' : 'lyrics';
+  const cycle = ['lyrics', 'chords', 'consol', 'chordsonly'];
+  lMode = cycle[(cycle.indexOf(lMode) + 1) % cycle.length] || 'lyrics';
   localStorage.setItem('l_mode', lMode);
   const btn = document.getElementById('l-btn-mode');
-  btn.textContent = lMode === 'consol' ? 'CONSOL' : lMode === 'chords' ? 'CHORDS' : 'LYRICS';
+  const labels = { lyrics:'LYRICS', chords:'CHORDS', consol:'CONSOL', chordsonly:'MELODY' };
+  btn.textContent = labels[lMode] || 'LYRICS';
   btn.classList.toggle('active', lMode === 'lyrics');
   lRenderSong();
 }
@@ -2558,8 +2634,7 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
 let _metroWarmup = false;
 
 function _stopMetroEngine() {
-  metroOn      = false;
-  _metroWarmup = false;
+  metroOn = false;
   clearInterval(_metroST);
   _metroST  = null;
   _lastBeat = -1;
@@ -2626,6 +2701,7 @@ function startMetro() {
 }
 
 function stopMetro() {
+  _metroWarmup = false;
   _stopMetroEngine();
   clearTimeout(metroTimeout);
   const btn = document.getElementById('l-metro-btn');
