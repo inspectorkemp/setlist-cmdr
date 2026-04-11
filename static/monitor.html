@@ -144,6 +144,8 @@ body.hi-contrast #content .cp-chords { color:#ffcc00; font-weight:700; }
 .cp-repeat-content {
   opacity:0.45;
 }
+.cp-chords-only { display:flex; flex-wrap:wrap; gap:0.4em 0.8em; padding:0.3em 0 0.5em; line-height:1.6; }
+.co-chord { font-family:'DM Mono',monospace; color:var(--amber); font-weight:700; font-size:1.15em; white-space:nowrap; }
 
 /* Next song ribbon */
 #next-bar {
@@ -610,8 +612,7 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
 }
 
 function _stopMetroEngine() {
-  metroOn      = false;
-  _metroWarmup = false;
+  metroOn = false;
   clearInterval(_metroST);
   _metroST  = null;
   _lastBeat = -1;
@@ -659,6 +660,7 @@ function startMetroFromEpoch(bpm, beatsPerBar, serverEpochMs) {
 }
 
 function stopMetro() {
+  _metroWarmup = false;
   _stopMetroEngine();
 }
 // ── Chord transposition ───────────────────────────────────────
@@ -1078,6 +1080,75 @@ function consolidatedHTML(text, xpSemitones, mode) {
   return out.join('') || '<span class="cp-empty">No content for this song.</span>';
 }
 
+function chordsOnlyHTML(text, xpSemitones) {
+  if (!text) return '';
+  const lines      = text.split('\n');
+  const sectionMap = _buildSectionMap(lines);
+  const out        = [];
+  let i = 0;
+
+  function extractChords(blockLines) {
+    const names = [];
+    for (const line of blockLines) {
+      if (!line.includes('[')) continue;
+      let cursor = 0;
+      while (cursor < line.length) {
+        if (line[cursor] === '[') {
+          const close = line.indexOf(']', cursor);
+          if (close === -1) { cursor++; continue; }
+          const token = line.slice(cursor + 1, close);
+          if (_isChord(token)) {
+            names.push(xpSemitones ? xpChord(token, xpSemitones) : token);
+          }
+          cursor = close + 1;
+        } else { cursor++; }
+      }
+    }
+    return names;
+  }
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (_isSectionLine(line)) {
+      const label   = _sectionLabel(line);
+      const content = sectionMap[label] || [];
+      let hasContent = false;
+      let j = i + 1;
+      while (j < lines.length && !_isSectionLine(lines[j])) {
+        if (lines[j].trim() !== '') { hasContent = true; break; }
+        j++;
+      }
+      if (!hasContent && content.length > 0) {
+        // bare back-reference — show dimmed chord flow
+        const chords = extractChords(content);
+        if (chords.length > 0) {
+          out.push('<div class="cp-section-ref"><span class="cp-section-label">' + escHtml(label) + '</span><span class="cp-section-repeat">(repeat)</span></div>');
+          out.push('<div class="cp-repeat-content"><div class="cp-chords-only">' + chords.map(c => '<span class="co-chord">' + escHtml(c) + '</span>').join('') + '</div></div>');
+        }
+        i++;
+        while (i < lines.length && lines[i].trim() === '') i++;
+      } else {
+        out.push('<div class="cp-section"><span class="cp-section-label">' + escHtml(label) + '</span></div>');
+        i++;
+        const block = [];
+        while (i < lines.length && !_isSectionLine(lines[i])) { block.push(lines[i]); i++; }
+        const chords = extractChords(block);
+        if (chords.length > 0) {
+          out.push('<div class="cp-chords-only">' + chords.map(c => '<span class="co-chord">' + escHtml(c) + '</span>').join('') + '</div>');
+        }
+      }
+    } else {
+      const chords = extractChords([line]);
+      if (chords.length > 0) {
+        out.push('<div class="cp-chords-only">' + chords.map(c => '<span class="co-chord">' + escHtml(c) + '</span>').join('') + '</div>');
+      }
+      i++;
+    }
+  }
+  return out.join('') || '<span class="cp-empty">No chord content for this song.</span>';
+}
+
+
 // ── Render ────────────────────────────────────────────────────
 function renderSong() {
   if (!song) return;
@@ -1096,6 +1167,10 @@ function renderSong() {
     const raw = song.chords || song.lyrics || '';
     html = consolidatedHTML(raw, dispXp, 'chords') ||
       '<span class="cp-empty">No content for this song.</span>';
+  } else if (viewMode === 'chordsonly') {
+    const raw = song.chords || song.lyrics || '';
+    html = chordsOnlyHTML(raw, dispXp) ||
+      '<span class="cp-empty">No chord content for this song.</span>';
   } else if (viewMode === 'chords') {
     const raw = song.chords || song.lyrics || '';
     html = chordProToHTML(raw, dispXp) ||
