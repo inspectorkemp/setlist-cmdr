@@ -333,6 +333,7 @@ if ('serviceWorker' in navigator) {
         <button class="l-ctrl" onclick="lXpDown()">♭</button>
         <div id="l-xp-display">+0</div>
         <button class="l-ctrl" onclick="lXpUp()">♯</button>
+        <button class="l-ctrl" id="l-btn-capo" onclick="lToggleCapo()" title="Capo compensation">CAPO</button>
       </div>
 
     </div>
@@ -518,6 +519,10 @@ if ('serviceWorker' in navigator) {
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
                  background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
             <input type="checkbox" id="mon-hc" style="accent-color:var(--amber);"> High contrast
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
+                 background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+            <input type="checkbox" id="mon-usecapo" style="accent-color:var(--amber);" checked> Capo comp
           </label>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
                  background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"
@@ -1859,6 +1864,7 @@ async function renderStageCard() {
 let lSong    = null;
 let lMode    = localStorage.getItem('l_mode') || 'lyrics';
 let lXp      = 0;
+let lUseCapo = localStorage.getItem('l_usecapo') !== 'false';
 let lScrolling  = false;
 let lScrollTick = null;
 
@@ -2268,7 +2274,7 @@ function lRenderSong() {
   document.getElementById('l-song-meta').innerHTML = meta.join(' · ');
 
   const capo   = lSong.capo || 0;
-  const dispXp = lXp - capo;  // fingered = sounding - capo + device xp
+  const dispXp = lXp - (lUseCapo ? capo : 0);
 
   const metaEl = document.getElementById('l-song-meta');
   if (metaEl) {
@@ -2351,6 +2357,18 @@ function lToggleMode() {
 
 function lXpUp()   { if (lXp < 11)  lXp++; lUpdXp(); }
 function lXpDown() { if (lXp > -11) lXp--; lUpdXp(); }
+
+function lToggleCapo() {
+  lUseCapo = !lUseCapo;
+  localStorage.setItem('l_usecapo', lUseCapo);
+  const btn = document.getElementById('l-btn-capo');
+  if (btn) btn.classList.toggle('active', lUseCapo);
+  lRenderSong();
+}
+(function initLCapo() {
+  const btn = document.getElementById('l-btn-capo');
+  if (btn) btn.classList.toggle('active', lUseCapo);
+})();
 function lSetFontSize(pct) {
   const el = document.getElementById('l-song-content');
   if (el) el.style.fontSize = (parseFloat(pct) / 100) + 'em';
@@ -2685,15 +2703,21 @@ function startMetro() {
   if (rSub) rSub.textContent = `${bpm} bpm`;
   const rBtn = document.getElementById('r-metro-btn');
   if (rBtn) rBtn.classList.add('active');
-  if (leaderWs && leaderWs.readyState === 1) {
-    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:4, server_epoch:serverEpoch }));
-  // GET READY warmup on leader screen
+  // GET READY warmup — set before sending WS so leader and musicians suppress together
   const _grEl  = document.getElementById('metro-getready');
   const _bpmEl = document.getElementById('gr-bpm-display');
-  if (_grEl) { _grEl.style.display = 'flex'; if (_bpmEl) _bpmEl.textContent = bpm + ' BPM'; }
   _metroWarmup = true;
-  const _barMs = Math.max(1000, (60000 / bpm) * 4);
-  setTimeout(() => { _metroWarmup = false; if (_grEl) _grEl.style.display = 'none'; }, _barMs);
+  if (_grEl) { _grEl.style.display = 'flex'; if (_bpmEl) _bpmEl.textContent = bpm + ' BPM'; }
+  // End warmup at next bar boundary relative to the shared epoch
+  const _beatMs      = 60000 / bpm;
+  const _bar         = 4;
+  const _localEpoch  = serverEpoch - clockOffset;
+  const _elapsed     = Math.max(0, (Date.now() - _localEpoch) / _beatMs);
+  const _nextBarBeat = (Math.floor(_elapsed / _bar) + 1) * _bar;
+  const _warmupMs    = Math.max(800, (_nextBarBeat - _elapsed) * _beatMs);
+  setTimeout(() => { _metroWarmup = false; if (_grEl) _grEl.style.display = 'none'; }, _warmupMs);
+  if (leaderWs && leaderWs.readyState === 1) {
+    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:4, server_epoch:serverEpoch }));
   }
   const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 20;
   clearTimeout(metroTimeout);
@@ -2869,6 +2893,7 @@ function openSettingsModal() {
   document.getElementById('mon-fit').checked    = !!mc.fit;
   document.getElementById('mon-hc').checked       = !!mc.hc;
   document.getElementById('mon-portrait').checked = !!mc.portrait;
+  document.getElementById('mon-usecapo').checked  = mc.usecapo !== false;
   document.getElementById('mon-rotated').checked  = !!mc.rotated;
   const fs = parseFloat(mc.fontscale) || 1.0;
   document.getElementById('mon-fontscale').value = fs;
@@ -2975,6 +3000,7 @@ function pushMonitorConfig() {
     fit:       document.getElementById('mon-fit').checked,
     hc:        document.getElementById('mon-hc').checked,
     portrait:  document.getElementById('mon-portrait').checked,
+    usecapo:   document.getElementById('mon-usecapo').checked,
     rotated:   document.getElementById('mon-rotated').checked,
     fontscale: parseFloat(document.getElementById('mon-fontscale').value),
   };
