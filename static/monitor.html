@@ -502,7 +502,8 @@ let slSongs     = [];
 let slId        = null;
 let rehearsalOn = false;
 let ws          = null;
-let monitorXp   = 0;  // current transpose from leader
+let monitorXp    = 0;  // current transpose from leader
+let monitorUseCapo = localStorage.getItem('mon_usecapo') !== 'false';
 
 // ── Clock sync (NTP-style) ────────────────────────────────────
 let clockOffset  = 0;
@@ -646,18 +647,25 @@ function _fireFlash(isDown, beatNum) {
 function startMetroFromEpoch(bpm, beatsPerBar, serverEpochMs) {
   const grEl  = document.getElementById('metro-getready');
   const bpmEl = document.getElementById('gr-bpm-display');
+  _metroWarmup = true;
+  _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
   if (grEl) {
     grEl.style.display = 'flex';
     if (bpmEl) bpmEl.textContent = bpm + ' BPM';
   }
-  _metroWarmup = true;
-  _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
-  const barMs = Math.max(1000, (60000 / bpm) * (beatsPerBar || 4));
+  const beatMs = 60000 / bpm;
+  const bar    = beatsPerBar || 4;
+  const now    = Date.now();
+  const localEpoch = serverEpochMs - clockOffset;
+  const beatsElapsed = Math.max(0, (now - localEpoch) / beatMs);
+  const nextBarBeat  = (Math.floor(beatsElapsed / bar) + 1) * bar;
+  const warmupMs     = Math.max(800, (nextBarBeat - beatsElapsed) * beatMs);
   setTimeout(() => {
     _metroWarmup = false;
     if (grEl) grEl.style.display = 'none';
-  }, barMs);
+  }, warmupMs);
 }
+
 
 function stopMetro() {
   _metroWarmup = false;
@@ -958,7 +966,13 @@ function applyMonitorConfig(msg) {
   const fontscale = msg.fontscale !== undefined ? parseFloat(msg.fontscale) || 1.0 : 1.0;
 
   // Persist (without the type field)
-  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, portrait: port, rotated, fontscale }));
+  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, portrait: port, rotated, fontscale, usecapo: monitorUseCapo }));
+
+  // Capo
+  if (msg.usecapo !== undefined) {
+    monitorUseCapo = !!msg.usecapo;
+    localStorage.setItem('mon_usecapo', monitorUseCapo);
+  }
 
   // Apply mode
   viewMode = mode;
@@ -1154,7 +1168,7 @@ function renderSong() {
   if (!song) return;
   document.getElementById('song-title').textContent = song.title;
   const capo  = song.capo || 0;
-  const dispXp = monitorXp - capo;
+  const dispXp = monitorXp - (monitorUseCapo ? capo : 0);
   const parts = [];
   if (song.song_key) parts.push(song.song_key);
   if (capo)          parts.push('Capo ' + capo);
