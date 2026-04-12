@@ -313,6 +313,17 @@
         <div class="toggle-track"></div>
       </label>
     </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Capo Compensation</div>
+        <div class="toggle-hint">Show fingered chord shapes adjusted for capo position</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="tog-usecapo" checked>
+        <div class="toggle-track"></div>
+      </label>
+    </div>
   </div>
 
   <!-- Apply -->
@@ -355,6 +366,7 @@ function readToggles() {
   cfg.fit      = document.getElementById('tog-fit').checked;
   cfg.hc       = document.getElementById('tog-hc').checked;
   cfg.portrait = document.getElementById('tog-portrait').checked;
+  cfg.usecapo  = document.getElementById('tog-usecapo').checked;
   cfg.rotated  = document.getElementById('tog-rotated').checked;
 }
 
@@ -364,6 +376,7 @@ function applyUI(c) {
   document.getElementById('tog-fit').checked      = !!c.fit;
   document.getElementById('tog-hc').checked       = !!c.hc;
   document.getElementById('tog-portrait').checked = !!c.portrait;
+  document.getElementById('tog-usecapo').checked  = c.usecapo !== false;
   document.getElementById('tog-rotated').checked  = !!c.rotated;
   const fs = parseFloat(c.fontscale) || 1.0;
   document.getElementById('fontscale-slider').value = fs;
