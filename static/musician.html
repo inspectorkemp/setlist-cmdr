@@ -553,6 +553,7 @@ body.hi-contrast #song-content { color:#ffffff; }
     <button class="ctrl" onclick="xpDown()">♭</button>
     <div id="xp-display">+0</div>
     <button class="ctrl" onclick="xpUp()">♯</button>
+    <button class="ctrl" id="btn-capo" onclick="toggleCapo()" title="Capo compensation">CAPO</button>
   </div>
 </div>
 
@@ -579,7 +580,8 @@ function xpText(text, n) {
 // ── State ─────────────────────────────────────────────────────
 let name = localStorage.getItem('bsl_name') || '';
 let mode = localStorage.getItem('bsl_mode') || 'lyrics';
-let xp   = 0;
+let xp      = 0;
+let useCapo = localStorage.getItem('m_usecapo') !== 'false';
 let song = null;
 let slSongs = [];
 let slId  = null;
@@ -1169,7 +1171,7 @@ function renderSong() {
   document.getElementById('song-title').textContent = song.title;
 
   const capo   = song.capo || 0;
-  const dispXp = xp - capo;
+  const dispXp = xp - (useCapo ? capo : 0);
   const meta = [];
   if (song.artist)   meta.push(`<b>${escHtml(song.artist)}</b>`);
   if (song.song_key) meta.push(`Key: <b>${escHtml(song.song_key)}</b>`);
@@ -1260,6 +1262,18 @@ function xpDown() { if (xp > -11) xp--; updXp(); }
 function updXp() {
   document.getElementById('xp-display').textContent = (xp >= 0 ? '+' : '') + xp;
   renderSong();
+}
+
+function toggleCapo() {
+  useCapo = !useCapo;
+  localStorage.setItem('m_usecapo', useCapo);
+  applyCapoBtn();
+  renderSong();
+}
+function applyCapoBtn() {
+  const btn = document.getElementById('btn-capo');
+  if (!btn) return;
+  btn.classList.toggle('active', useCapo);
 }
 
 // ── Autoscroll ────────────────────────────────────────────────
@@ -1427,27 +1441,34 @@ function _fireFlash(isDown, beatNum) {
   }, { passive: true }));
 
 function startMetroFromEpoch(bpm, beatsPerBar, serverEpochMs) {
-  // Show GET READY while the clock sync is still settling.
-  // Suppress flashing for the first bar duration so the first
-  // visible beat is already well-synchronised across all devices.
   const grEl  = document.getElementById('metro-getready');
   const bpmEl = document.getElementById('gr-bpm-display');
+  _metroWarmup = true;
+  _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
+  // Show GET READY after engine starts (so _stopMetroEngine inside doesn't hide it)
   if (grEl) {
     grEl.style.display = 'flex';
     if (bpmEl) bpmEl.textContent = bpm + ' BPM';
   }
-  // Start the engine but suppress flashes during warmup
-  _metroWarmup = true;
-  _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
-  // Warmup duration: one full bar at the song tempo, minimum 1s
-  const barMs = Math.max(1000, (60000 / bpm) * (beatsPerBar || 4));
+  // End warmup at beat boundary so all devices unsuppress on the same beat,
+  // regardless of when each device received the WS message.
+  // Wait for beatsPerBar beats from epoch, minimum 1 full bar.
+  const beatMs = 60000 / bpm;
+  const bar    = beatsPerBar || 4;
+  const now    = Date.now();
+  const localEpoch = serverEpochMs - clockOffset;
+  const beatsElapsed = Math.max(0, (now - localEpoch) / beatMs);
+  // Next bar boundary at or after (bar) beats from now
+  const nextBarBeat = (Math.floor(beatsElapsed / bar) + 1) * bar;
+  const warmupMs    = Math.max(800, (nextBarBeat - beatsElapsed) * beatMs);
   setTimeout(() => {
     _metroWarmup = false;
     if (grEl) grEl.style.display = 'none';
-  }, barMs);
+  }, warmupMs);
   document.getElementById('btn-metro').classList.add('active');
   document.getElementById('metro-bpm-sub').textContent = `${bpm} bpm`;
 }
+
 
 let metroTimeout = null;
 
@@ -1582,6 +1603,7 @@ function applyColumns() {
   applySpacing();
   applyContrast();
   applyColumns();
+  applyCapoBtn();
 })();
 
 function setFontSize(pct) {
