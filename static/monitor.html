@@ -508,6 +508,7 @@ let monitorUseCapo = localStorage.getItem('mon_usecapo') !== 'false';
 // ── Clock sync (NTP-style) ────────────────────────────────────
 let clockOffset  = 0;
 let syncSamples  = [];
+let _pendingMetro = null;
 
 function syncClock() {
   if (!ws || ws.readyState !== 1) return;
@@ -526,8 +527,16 @@ function handleSyncReply(msg) {
     const good      = syncSamples.slice(0, 8);
     const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
     const delta     = newOffset - clockOffset;
-    clockOffset     = clockOffset + Math.max(-20, Math.min(20, delta));
+    const _firstSync = (clockOffset === 0);
+    clockOffset     = clockOffset + (_firstSync ? delta : Math.max(-20, Math.min(20, delta)));
     syncSamples     = [];
+    if (_pendingMetro) {
+      const m = _pendingMetro; _pendingMetro = null;
+      // Only start if not already running with same epoch
+      if (!metroOn || _serverEpochMs !== m.server_epoch) {
+        startMetroFromEpoch(m.bpm, m.beats_per_bar, m.server_epoch);
+      }
+    }
   }
 }
 function serverNow() { return Date.now() + clockOffset; }
@@ -1173,6 +1182,7 @@ function renderSong() {
   if (song.song_key) parts.push(song.song_key);
   if (capo)          parts.push('Capo ' + capo);
   if (song.tempo)    parts.push(song.tempo + ' BPM');
+  if (song.time_sig && song.time_sig !== '4/4') parts.push(song.time_sig);
   document.getElementById('song-meta').textContent = parts.join('  ·  ');
   const el = document.getElementById('content');
   let html;
@@ -1297,7 +1307,11 @@ function connect() {
       showStandby();
     }
     if (msg.type === 'metronome_start') {
-      startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
+      if (syncSamples.length > 0 && (!metroOn || _serverEpochMs !== msg.server_epoch)) {
+        _pendingMetro = msg;
+      } else if (!metroOn || _serverEpochMs !== msg.server_epoch) {
+        startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
+      }
     }
     if (msg.type === 'metronome_stop') stopMetro();
     if (msg.type === 'scroll_update')  applyScroll(msg.pct);
