@@ -274,6 +274,10 @@ if ('serviceWorker' in navigator) {
         <div class="gap"></div>
         <button class="ctrl-bar-btn" id="l-prev-btn" onclick="navSong(-1)">◄ PREV</button>
         <button class="ctrl-bar-btn" id="l-next-btn" onclick="navSong(+1)">NEXT ►</button>
+        <button class="ctrl-bar-btn" id="l-tap-btn" onclick="tapTempo()"
+                title="Tap to set BPM">
+          TAP<span class="bpm-sub" id="tap-bpm-sub"></span>
+        </button>
         <button class="ctrl-bar-btn" id="l-metro-btn" onclick="toggleMetro()">
           ◉ FLASH<span class="bpm-sub" id="leader-metro-sub"></span>
         </button>
@@ -900,6 +904,14 @@ Here comes the sun…"></textarea>
           <input id="f-tempo" type="number" min="40" max="250" placeholder="120">
         </div>
         <div class="form-group">
+          <label>Time Signature</label>
+          <select id="f-timesig">
+            <option value="4/4">4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="6/8">6/8</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Duration (mm:ss)</label>
           <input id="f-duration" type="text" placeholder="3:45">
         </div>
@@ -1049,6 +1061,7 @@ function songCard(s) {
     s.artist   ? `<span>${s.artist}</span>` : '',
     s.song_key ? `Key: <span>${s.song_key}</span>` : '',
     s.tempo    ? `<span>${s.tempo} BPM</span>` : '',
+    (s.time_sig && s.time_sig !== '4/4') ? `<span>${s.time_sig}</span>` : '',
     s.duration ? `<span>${fmtDur(s.duration)}</span>` : '',
   ].filter(Boolean).join(' · ');
   return `<div class="song-card" onclick="openSongModal(${s.id})">
@@ -1057,6 +1070,8 @@ function songCard(s) {
       <div class="s-sub">${meta}</div>
     </div>
     <span class="status-badge s-${s.status}">${s.status.replace('_',' ')}</span>
+    <button class="btn" onclick="event.stopPropagation(); quickAddToSetlist(${s.id}, '${esc(s.title)}')"
+            title="Add to current setlist" style="padding:4px 10px;font-size:.8rem;">+ Set</button>
     <button class="btn rehear-btn" onclick="event.stopPropagation(); startRehearsal(${s.id})"
             title="Send to all musician screens for rehearsal">&#9654; Rehearse</button>
   </div>`;
@@ -1247,6 +1262,7 @@ function openSongModal(id) {
   document.getElementById('f-key').value      = s?.song_key || '';
   document.getElementById('f-capo').value     = s?.capo     || 0;
   document.getElementById('f-tempo').value    = s?.tempo    || '';
+  document.getElementById('f-timesig').value  = s?.time_sig || '4/4';
   document.getElementById('f-duration').value = s?.duration ? fmtDur(s.duration) : '';
   document.getElementById('f-status').value   = s?.status   || 'active';
   document.getElementById('f-lyrics').value   = s?.lyrics   || '';
@@ -1267,6 +1283,7 @@ async function saveSong() {
     artist:   document.getElementById('f-artist').value.trim()   || null,
     song_key: document.getElementById('f-key').value             || null,
     capo:     parseInt(document.getElementById('f-capo').value)   || 0,
+    time_sig: document.getElementById('f-timesig').value || '4/4',
     tempo:    parseInt(document.getElementById('f-tempo').value)  || null,
     duration: parseDur(document.getElementById('f-duration').value),
     lyrics:   document.getElementById('f-lyrics').value.trim()   || null,
@@ -1449,6 +1466,35 @@ function renderLibrary() {
   document.getElementById('lib-results').innerHTML = avail.map(s =>
     `<div class="lib-chip" onclick="addToSetlist(${s.id})">${esc(s.title)}</div>`
   ).join('') || `<div style="color:var(--dim);font-size:.8rem;">No songs to add.</div>`;
+}
+
+async function quickAddToSetlist(songId, title) {
+  const slId   = currentSl?.id || liveState.setlist_id;
+  const slName = currentSl?.name || liveState.setlist_name || 'setlist';
+  if (!slId) { showToast('Open a setlist in the Setlists tab first'); return; }
+  await api.post(`/api/setlists/${slId}/songs`, { song_id: songId, position: 9999 });
+  showToast(`Added to ${slName}`);
+  if (currentSl?.id === slId) {
+    slSongs = await api.get(`/api/setlists/${slId}/songs`);
+    renderSlEditor();
+  }
+}
+
+function showToast(msg) {
+  let t = document.getElementById('_toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '_toast';
+    t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);' +
+      'background:var(--surface);border:1px solid var(--border);border-radius:10px;' +
+      'padding:10px 22px;font-size:.85rem;color:var(--text);z-index:9999;' +
+      'pointer-events:none;transition:opacity .3s;white-space:nowrap;box-shadow:0 4px 24px rgba(0,0,0,.4);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._hide);
+  t._hide = setTimeout(() => { t.style.opacity = '0'; }, 2200);
 }
 
 async function addToSetlist(songId) {
@@ -1865,6 +1911,7 @@ let lSong    = null;
 let lMode    = localStorage.getItem('l_mode') || 'lyrics';
 let lXp      = 0;
 let lUseCapo = localStorage.getItem('l_usecapo') !== 'false';
+const _lScrollPos = new Map();
 let lScrolling  = false;
 let lScrollTick = null;
 
@@ -2256,6 +2303,13 @@ function chordsOnlyHTML(text, xpSemitones) {
 }
 
 
+document.addEventListener('DOMContentLoaded', () => {
+  const lcw = document.getElementById('l-content-wrap');
+  if (lcw) lcw.addEventListener('scroll', () => {
+    if (lSong) _lScrollPos.set(lSong.id, lcw.scrollTop);
+  }, { passive: true });
+});
+
 function lRenderSong() {
   if (!lSong) {
     document.getElementById('l-song-content').innerHTML =
@@ -2282,6 +2336,7 @@ function lRenderSong() {
     if (lSong.artist)   meta.push(`<b>${esc(lSong.artist)}</b>`);
     if (lSong.song_key) meta.push(`Key: <b>${esc(lSong.song_key)}</b>`);
     if (capo)           meta.push(`Capo <b>${capo}</b>`);
+    if (lSong.time_sig && lSong.time_sig !== '4/4') meta.push(`<b>${lSong.time_sig}</b>`);
     if (lSong.tempo)    meta.push(`♩ <b>${lSong.tempo} BPM</b>`);
     metaEl.innerHTML = meta.join(' · ');
   }
@@ -2306,6 +2361,12 @@ function lRenderSong() {
       '<span class="cp-empty">No content added for this song.</span>';
   }
   el.innerHTML = lTwoCol ? splitToColumns(html) : html;
+
+  // Restore saved scroll position
+  const _lcw = document.getElementById('l-content-wrap');
+  if (_lcw) requestAnimationFrame(() => {
+    _lcw.scrollTop = lSong && _lScrollPos.has(lSong.id) ? _lScrollPos.get(lSong.id) : 0;
+  });
 }
 
 // ── Compact stage mode ────────────────────────────────────────
@@ -2559,8 +2620,11 @@ function handleSyncReply(msg) {
     const good = syncSamples.slice(0, 8);
     const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
     // Smooth large jumps to avoid sudden phase shifts mid-performance
+    // First sync: apply full offset immediately for fast convergence.
+    // Subsequent syncs: clamp to 20ms per cycle to avoid mid-show phase jumps.
     const delta = newOffset - clockOffset;
-    clockOffset = clockOffset + Math.max(-20, Math.min(20, delta));
+    const _firstSync = (clockOffset === 0);
+    clockOffset = clockOffset + (_firstSync ? delta : Math.max(-20, Math.min(20, delta)));
     syncSamples = [];
     console.log(`[CMDR] Clock synced. offset=${clockOffset.toFixed(1)}ms`);
   }
@@ -2684,7 +2748,50 @@ function fireFlash(bpm, isDown, beatNum) {
 
 let metroTimeout = null;
 
+// ── Tap tempo ─────────────────────────────────────────────────
+let _tapTimes = [];
+let _tapResetTimer = null;
+
+function tapTempo() {
+  const now = Date.now();
+  clearTimeout(_tapResetTimer);
+  if (_tapTimes.length > 0 && now - _tapTimes[_tapTimes.length - 1] > 3000) {
+    _tapTimes = [];
+  }
+  _tapTimes.push(now);
+  _tapResetTimer = setTimeout(() => {
+    _tapTimes = [];
+    const sub = document.getElementById('tap-bpm-sub');
+    if (sub) sub.textContent = '';
+  }, 3000);
+
+  if (_tapTimes.length < 2) {
+    const sub = document.getElementById('tap-bpm-sub');
+    if (sub) sub.textContent = ' ...';
+    return;
+  }
+  const intervals = [];
+  for (let i = 1; i < _tapTimes.length; i++) intervals.push(_tapTimes[i] - _tapTimes[i - 1]);
+  const bpm = Math.max(20, Math.min(300, Math.round(60000 / (intervals.reduce((a,b) => a+b,0) / intervals.length))));
+  const sub = document.getElementById('tap-bpm-sub');
+  if (sub) sub.textContent = ' ' + bpm;
+
+  if (_tapTimes.length >= 3 && lSong) {
+    lSong.tempo = bpm;
+    lRenderSong();
+    api.put(`/api/songs/${lSong.id}`, { ...lSong, tempo: bpm }).catch(() => {});
+    if (metroOn) { stopMetro(); startMetro(); }
+    // Update time_sig field in case tap occurred during song
+  }
+}
+
 function toggleMetro() { metroOn ? stopMetro() : startMetro(); }
+
+function timeSigBeats(ts) {
+  if (!ts) return 4;
+  const n = parseInt(ts.split('/')[0]);
+  return isNaN(n) ? 4 : n;
+}
 
 function startMetro() {
   const cur = liveSlSongs[liveState.song_index];
@@ -2696,7 +2803,8 @@ function startMetro() {
     return;
   }
   const serverEpoch = serverNow();
-  _startMetroEngine(bpm, 4, serverEpoch);
+  const beatsPerBar = timeSigBeats(cur?.time_sig);
+  _startMetroEngine(bpm, beatsPerBar, serverEpoch);
   if (btn) btn.classList.add('active');
   document.getElementById('leader-metro-sub').textContent = `${bpm} bpm`;
   const rSub = document.getElementById('r-metro-sub');
@@ -2710,14 +2818,14 @@ function startMetro() {
   if (_grEl) { _grEl.style.display = 'flex'; if (_bpmEl) _bpmEl.textContent = bpm + ' BPM'; }
   // End warmup at next bar boundary relative to the shared epoch
   const _beatMs      = 60000 / bpm;
-  const _bar         = 4;
+  const _bar         = beatsPerBar;
   const _localEpoch  = serverEpoch - clockOffset;
   const _elapsed     = Math.max(0, (Date.now() - _localEpoch) / _beatMs);
   const _nextBarBeat = (Math.floor(_elapsed / _bar) + 1) * _bar;
   const _warmupMs    = Math.max(800, (_nextBarBeat - _elapsed) * _beatMs);
   setTimeout(() => { _metroWarmup = false; if (_grEl) _grEl.style.display = 'none'; }, _warmupMs);
   if (leaderWs && leaderWs.readyState === 1) {
-    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:4, server_epoch:serverEpoch }));
+    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:beatsPerBar, server_epoch:serverEpoch }));
   }
   const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 20;
   clearTimeout(metroTimeout);
