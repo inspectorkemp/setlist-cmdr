@@ -75,11 +75,18 @@ html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--
   padding:10px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;
 }
 .dot {
-  width:9px; height:9px; border-radius:50%; background:var(--dim); flex-shrink:0;
+  width:10px; height:10px; border-radius:50%;
+  background:var(--dim); flex-shrink:0;
   transition:background .3s, box-shadow .3s;
 }
-.dot.on  { background:var(--green); box-shadow:0 0 8px var(--green); }
-.dot.off { background:var(--red); }
+.dot.on   { background:var(--green); box-shadow:0 0 8px var(--green); }
+.dot.warn { background:var(--amber); box-shadow:0 0 8px var(--amber);
+            animation:dot-pulse .8s ease-in-out infinite alternate; }
+.dot.off  { background:var(--red);   box-shadow:0 0 6px var(--red); }
+@keyframes dot-pulse {
+  from { opacity:.5; }
+  to   { opacity:1.0; }
+}
 #sl-name { font-family:'Bebas Neue',sans-serif; font-size:1.35rem; letter-spacing:2px;
            color:var(--amber); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #pos-badge { font-family:'DM Mono',monospace; font-size:.82rem; color:var(--dim); flex-shrink:0; }
@@ -582,6 +589,7 @@ let name = localStorage.getItem('bsl_name') || '';
 let mode = localStorage.getItem('bsl_mode') || 'lyrics';
 let xp      = 0;
 let useCapo = localStorage.getItem('m_usecapo') !== 'false';
+const _scrollPos = new Map();
 let song = null;
 let slSongs = [];
 let slId  = null;
@@ -663,22 +671,42 @@ function connect() {
     if (msg.type === 'rehearsal_stop')   clearRehearsal();
     if (msg.type === 'metronome_start') {
       stopMetro();
-      startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
+      // Defer if sync in progress AND engine not already running correctly
+      if (syncSamples.length > 0 && (!metroOn || _serverEpochMs !== msg.server_epoch)) {
+        _pendingMetro = msg;
+      } else if (!metroOn || _serverEpochMs !== msg.server_epoch) {
+        startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
+      }
       const secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
       clearTimeout(metroTimeout);
       metroTimeout = setTimeout(stopMetro, secs * 1000);
     }
     if (msg.type === 'metronome_stop')  stopMetro();
   };
-  ws.onclose = () => { setDot('off'); musicianWs = null; setTimeout(connect, 3000); };
+  ws.onclose = () => { setDot('warn'); musicianWs = null; setTimeout(connect, 3000); };
   ws.onerror = () => ws.close();
 }
 
 setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
 
+let _dotWarnTimer = null;
+
 function setDot(s) {
   const d = document.getElementById('dot');
-  d.className = 'dot ' + (s === 'on' ? 'on' : 'off');
+  clearTimeout(_dotWarnTimer);
+  if (s === 'on') {
+    d.className = 'dot on';
+    // Resume audio context on reconnect in case device was sleeping
+    if (_metroAc && _metroAc.state === 'suspended') _metroAc.resume().catch(() => {});
+  } else if (s === 'warn') {
+    d.className = 'dot warn';
+    // Escalate to red after 5 seconds of no reconnect
+    _dotWarnTimer = setTimeout(() => {
+      document.getElementById('dot').className = 'dot off';
+    }, 5000);
+  } else {
+    d.className = 'dot off';
+  }
 }
 
 // ── Fallback polling ──────────────────────────────────────────
@@ -1177,6 +1205,7 @@ function renderSong() {
   if (song.song_key) meta.push(`Key: <b>${escHtml(song.song_key)}</b>`);
   if (capo)          meta.push(`Capo <b>${capo}</b>`);
   if (song.tempo)    meta.push(`♩ <b>${song.tempo} BPM</b>`);
+  if (song.time_sig && song.time_sig !== '4/4') meta.push(`<b>${escHtml(song.time_sig)}</b>`);
   document.getElementById('song-meta').innerHTML = meta.join(' · ');
 
   // Mark app as content-active to compress chrome
@@ -1203,6 +1232,12 @@ function renderSong() {
       '<span class="cp-empty">No content added for this song.</span>';
   }
   el.innerHTML = twoCol ? splitToColumns(html) : html;
+
+  // Restore saved scroll position for this song (reset to 0 on first visit)
+  const _cw = document.getElementById('content-wrap');
+  if (_cw) requestAnimationFrame(() => {
+    _cw.scrollTop = song && _scrollPos.has(song.id) ? _scrollPos.get(song.id) : 0;
+  });
 }
 
 // ── Controls collapse / expand ───────────────────────────────
@@ -1226,6 +1261,10 @@ function _scheduleCollapse() {
 
 // Tap content area to toggle controls
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('content-wrap').addEventListener('scroll', () => {
+    const cw = document.getElementById('content-wrap');
+    if (song && cw) _scrollPos.set(song.id, cw.scrollTop);
+  }, { passive: true });
   document.getElementById('content-wrap').addEventListener('click', e => {
     if (e.target.id === 'ctrl-expand-btn') return;
     const app = document.getElementById('app');
@@ -1296,6 +1335,7 @@ function stopScroll() {
 // ── Clock sync (NTP-style over WebSocket) ─────────────────────
 let clockOffset  = 0;
 let syncSamples  = [];
+let _pendingMetro = null; // metro msg received before sync complete
 let musicianWs   = null;  // set by connect()
 
 function syncClock() {
@@ -1318,9 +1358,23 @@ function handleSyncReply(msg) {
     const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
     // Smooth large jumps — never move the offset by more than 20ms at once
     // to avoid sudden phase jumps mid-performance
+    // First sync: apply full offset immediately for fast convergence.
+    // Subsequent syncs: clamp to 20ms per cycle to avoid mid-show phase jumps.
     const delta = newOffset - clockOffset;
-    clockOffset = clockOffset + Math.max(-20, Math.min(20, delta));
+    const _firstSync = (clockOffset === 0);
+    clockOffset = clockOffset + (_firstSync ? delta : Math.max(-20, Math.min(20, delta)));
     syncSamples = [];
+    // Fire any metro start that arrived before sync was ready
+    if (_pendingMetro) {
+      const m = _pendingMetro; _pendingMetro = null;
+      // Only start if not already running with same epoch
+      if (!metroOn || _serverEpochMs !== m.server_epoch) {
+        startMetroFromEpoch(m.bpm, m.beats_per_bar, m.server_epoch);
+      }
+      const _secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
+      clearTimeout(metroTimeout);
+      metroTimeout = setTimeout(stopMetro, _secs * 1000);
+    }
   }
 }
 
