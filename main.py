@@ -148,12 +148,19 @@ def _m004_songs_capo(conn):
         conn.execute("ALTER TABLE songs ADD COLUMN capo INTEGER DEFAULT 0")
     conn.commit()
 
+def _m005_songs_time_sig(conn):
+    """Add time_sig column to songs."""
+    if not _col_exists(conn, 'songs', 'time_sig'):
+        conn.execute("ALTER TABLE songs ADD COLUMN time_sig TEXT DEFAULT '4/4'")
+    conn.commit()
+
 # ── Migration registry — append only, never edit existing entries ─
 _MIGRATIONS = [
     (1, "Base schema",                   _m001_base_schema),
     (2, "Setlist active/position",       _m002_setlist_active_position),
     (3, "Band members table",            _m003_band_members),
     (4, "Songs capo column",             _m004_songs_capo),
+    (5, "Songs time_sig column",         _m005_songs_time_sig),
 ]
 
 def init_db():
@@ -451,6 +458,7 @@ class SongIn(BaseModel):
     song_key: Optional[str] = None
     capo:     Optional[int] = 0
     tempo:    Optional[int] = None
+    time_sig: Optional[str] = "4/4"
     duration: Optional[int] = None
     status:   str = "active"
     lyrics:   Optional[str] = None
@@ -570,9 +578,10 @@ def list_songs(status: Optional[str] = None):
 def create_song(song: SongIn):
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO songs (title,artist,song_key,capo,tempo,duration,status,lyrics,chords,notes)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo, song.duration,
+        "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo,
+         song.time_sig or '4/4', song.duration,
          song.status, song.lyrics, song.chords, song.notes)
     )
     conn.commit()
@@ -593,9 +602,10 @@ def get_song(song_id: int):
 def update_song(song_id: int, song: SongIn):
     conn = get_db()
     conn.execute(
-        "UPDATE songs SET title=?,artist=?,song_key=?,capo=?,tempo=?,duration=?,status=?,"
+        "UPDATE songs SET title=?,artist=?,song_key=?,capo=?,tempo=?,time_sig=?,duration=?,status=?,"
         "lyrics=?,chords=?,notes=? WHERE id=?",
-        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo, song.duration,
+        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo,
+         song.time_sig or '4/4', song.duration,
          song.status, song.lyrics, song.chords, song.notes, song_id)
     )
     conn.commit()
@@ -745,9 +755,9 @@ async def import_songs_batch(file: UploadFile = File(...)):
         conn = get_db()
         dest = "chords" if result["is_chordpro"] else "lyrics"
         cur = conn.execute(
-            "INSERT INTO songs (title,artist,song_key,capo,tempo,duration,status,lyrics,chords,notes)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (result["title"], result["artist"] or None, None, 0, None, None,
+            "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
              "active",
              None if dest == "chords" else result["raw"],
              result["raw"] if dest == "chords" else None,
@@ -812,9 +822,9 @@ async def import_songs_batch(file: UploadFile = File(...)):
         dest = "chords" if result["is_chordpro"] else "lyrics"
         try:
             cur = conn.execute(
-                "INSERT INTO songs (title,artist,song_key,capo,tempo,duration,status,lyrics,chords,notes)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (result["title"], result["artist"] or None, None, 0, None, None,
+                "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
                  "active",
                  None if dest == "chords" else result["raw"],
                  result["raw"] if dest == "chords" else None,
@@ -1049,15 +1059,16 @@ async def stop_rehearsal():
     return {"ok": True}
 
 # ── Metro state (in-memory) ───────────────────────────────────
-metro_state = {
-    "on":           False,
-    "bpm":          None,
+# metro_state: persisted so Pi restart mid-show restores metronome
+metro_state = _load_state("metro_state", {
+    "on":            False,
+    "bpm":           None,
     "beats_per_bar": 4,
-    "server_epoch": None,   # ms timestamp of beat 0
-}
+    "server_epoch":  None,
+})
 
-# Monitor display preferences — persisted so reconnects get current state
-monitor_config = {
+# monitor_config: persisted so Pi restart restores monitor display prefs
+monitor_config = _load_state("monitor_config", {
     "mode":      "chords",
     "cols":      False,
     "fit":       False,
@@ -1066,7 +1077,7 @@ monitor_config = {
     "rotated":   False,
     "usecapo":   True,
     "fontscale": 1.0,
-}
+})
 
 @app.put("/api/metro")
 async def set_metro_stub():
@@ -1109,6 +1120,7 @@ async def ws_endpoint(websocket: WebSocket):
                             "beats_per_bar": msg.get("beats_per_bar", 4),
                             "server_epoch":  msg["server_epoch"],
                         })
+                        _save_state("metro_state", metro_state)
                         await manager.broadcast({
                             "type":         "metronome_start",
                             "bpm":          metro_state["bpm"],
@@ -1118,6 +1130,7 @@ async def ws_endpoint(websocket: WebSocket):
                     elif msg.get("type") == "metronome_stop":
                         metro_state["on"] = False
                         metro_state["server_epoch"] = None
+                        _save_state("metro_state", metro_state)
                         await manager.broadcast({"type": "metronome_stop"})
                     elif msg.get("type") == "scroll_update":
                         # Leader scroll position — forward to all monitors
@@ -1141,6 +1154,7 @@ async def ws_endpoint(websocket: WebSocket):
                             "usecapo":   bool(msg.get("usecapo",   monitor_config["usecapo"])),
                             "fontscale": float(msg.get("fontscale", monitor_config["fontscale"])),
                         })
+                        _save_state("monitor_config", monitor_config)
                         await manager.broadcast({"type": "monitor_config", **monitor_config})
                 except Exception:
                     pass
