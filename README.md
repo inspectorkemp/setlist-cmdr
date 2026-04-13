@@ -59,8 +59,11 @@ Each song stores: title, artist, key, capo, time signature, tempo, duration, sta
 The view mode button on each device cycles through four options:
 
 **Chords** — chord-above-lyric layout (default)
+
 **Lyrics** — plain text, no chords
+
 **Consol** — each unique section shown once, all repeats removed
+
 **Melody** — chord names and section markers only, no lyric text
 
 ---
