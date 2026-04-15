@@ -602,6 +602,66 @@ if ('serviceWorker' in navigator) {
              font-size:.7rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">
           ChordPro
         </div>
+
+        <!-- ── Chord insert toolbar ── -->
+        <div id="ce-toolbar" class="ce-toolbar-hidden">
+          <!-- Sections row -->
+          <div class="ce-tb-section-row">
+            <span class="ce-tb-group-label">Sections</span>
+            <div class="ce-tb-chips">
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Intro')">Intro</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Verse 1')">Verse 1</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Verse 2')">Verse 2</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Verse 3')">Verse 3</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Pre-Chorus')">Pre-Chorus</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Chorus')">Chorus</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Bridge')">Bridge</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Outro')">Outro</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Tag')">Tag</button>
+              <button type="button" class="ce-chip ce-section" onclick="ceInsertSection('Solo')">Solo</button>
+            </div>
+          </div>
+          <!-- Chords row — scrollable, never wraps -->
+          <div class="ce-tb-chord-row">
+            <span class="ce-tb-group-label">Chords</span>
+            <div class="ce-tb-scroll">
+              <button type="button" class="ce-chip ce-nudge" onclick="ceNudgeChord(-1)" title="Move chord left">&#9668;</button>
+              <button type="button" class="ce-chip ce-nudge" onclick="ceNudgeChord(1)"  title="Move chord right">&#9658;</button>
+              <span class="ce-tb-divider"></span>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('C')">C</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('D')">D</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('E')">E</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('F')">F</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('G')">G</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('A')">A</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('B')">B</button>
+              <span class="ce-tb-divider"></span>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Am')">Am</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Dm')">Dm</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Em')">Em</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Gm')">Gm</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Bm')">Bm</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Cm')">Cm</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Fm')">Fm</button>
+              <span class="ce-tb-divider"></span>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Bb')">Bb</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Eb')">Eb</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Ab')">Ab</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Db')">Db</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('F#')">F#</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('C#')">C#</button>
+              <button type="button" class="ce-chip" onclick="ceInsertChord('Gb')">Gb</button>
+              <span class="ce-tb-divider"></span>
+              <button type="button" class="ce-chip ce-modifier" onclick="ceModifyChord('7')"    title="Append to nearest chord">+7</button>
+              <button type="button" class="ce-chip ce-modifier" onclick="ceModifyChord('maj7')" title="Append maj7">maj7</button>
+              <button type="button" class="ce-chip ce-modifier" onclick="ceModifyChord('m7')"   title="Append m7">m7</button>
+              <button type="button" class="ce-chip ce-modifier" onclick="ceModifyChord('sus2')" title="Append sus2">sus2</button>
+              <button type="button" class="ce-chip ce-modifier" onclick="ceModifyChord('sus4')" title="Append sus4">sus4</button>
+              <button type="button" class="ce-chip ce-modifier" onclick="ceModifyChord('add9')" title="Append add9">add9</button>
+            </div>
+          </div>
+        </div>
+
         <textarea id="ce-input"
           style="flex:1;background:var(--bg);border:none;outline:none;resize:none;
                  color:var(--text);font-family:'DM Mono',monospace;
@@ -1078,11 +1138,107 @@ function songCard(s) {
 }
 
 // ── ChordPro full-screen editor ──────────────────────────────
-let ceMode = 'lyrics';
 let ceConverterOpen = false;
+
+// ── Chord editor toolbar ─────────────────────────────────────
+let ceMode = 'chords'; // default to chords so toolbar is visible
+
+function ceShowToolbar(show) {
+  const tb = document.getElementById('ce-toolbar');
+  if (!tb) return;
+  if (show) {
+    tb.classList.remove('ce-toolbar-hidden');
+  } else {
+    tb.classList.add('ce-toolbar-hidden');
+  }
+}
+
+function ceInsertChord(chord) {
+  const ta  = document.getElementById('ce-input');
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const insert = '[' + chord + ']';
+  const newVal = val.slice(0, pos) + insert + val.slice(pos);
+  ta.value = newVal;
+  const newPos = pos + insert.length;
+  ta.setSelectionRange(newPos, newPos);
+  updateCePreview();
+  ta.focus();
+}
+
+function ceModifyChord(modifier) {
+  // Append modifier to the chord bracket nearest the cursor
+  const ta  = document.getElementById('ce-input');
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const before = val.slice(0, pos);
+  const lastOpen = before.lastIndexOf('[');
+  if (lastOpen === -1) { ceInsertChord(modifier); return; }
+  const closeIdx = val.indexOf(']', lastOpen);
+  if (closeIdx === -1 || closeIdx < pos - 6) { ceInsertChord(modifier); return; }
+  // Insert modifier before the closing bracket
+  const newVal = val.slice(0, closeIdx) + modifier + val.slice(closeIdx);
+  ta.value = newVal;
+  const newPos = closeIdx + modifier.length + 1;
+  ta.setSelectionRange(newPos, newPos);
+  updateCePreview();
+  ta.focus();
+}
+
+function ceInsertSection(label) {
+  const ta  = document.getElementById('ce-input');
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const before = val.slice(0, pos);
+  const lineStart = before.lastIndexOf('\n');
+  const lineContent = before.slice(lineStart + 1).trim();
+  const prefix = (lineContent.length > 0) ? '\n' : '';
+  const insert = prefix + '[' + label + ']\n';
+  const newVal = val.slice(0, pos) + insert + val.slice(pos);
+  ta.value = newVal;
+  ta.setSelectionRange(pos + insert.length, pos + insert.length);
+  updateCePreview();
+  ta.focus();
+}
+
+function ceNudgeChord(dir) {
+  const ta  = document.getElementById('ce-input');
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const before = val.slice(0, pos);
+  // Find nearest [ before cursor, not crossing a newline
+  let openIdx = -1;
+  for (let i = before.length - 1; i >= 0; i--) {
+    if (before[i] === '[') { openIdx = i; break; }
+    if (before[i] === '\n') break;
+  }
+  if (openIdx === -1) { ta.focus(); return; }
+  const closeIdx = val.indexOf(']', openIdx);
+  if (closeIdx === -1) { ta.focus(); return; }
+  const chord = val.slice(openIdx, closeIdx + 1);
+  const lineStart = val.lastIndexOf('\n', openIdx) + 1;
+  const lineEndRaw = val.indexOf('\n', closeIdx);
+  const lineEnd = lineEndRaw === -1 ? val.length : lineEndRaw;
+  const line = val.slice(lineStart, lineEnd);
+  const chordLocalIdx = openIdx - lineStart;
+  if (dir === -1 && chordLocalIdx === 0) { ta.focus(); return; }
+  if (dir === 1  && openIdx + chord.length >= lineEnd) { ta.focus(); return; }
+  let chars = line.split('');
+  chars.splice(chordLocalIdx, chord.length);
+  const newIdx = Math.max(0, chordLocalIdx + dir);
+  while (chars.length < newIdx) chars.push(' ');
+  chars.splice(newIdx, 0, ...chord.split(''));
+  const newLine = chars.join('');
+  const newVal  = val.slice(0, lineStart) + newLine + (lineEndRaw === -1 ? '' : val.slice(lineEndRaw));
+  ta.value = newVal;
+  ta.setSelectionRange(lineStart + newIdx + chord.length, lineStart + newIdx + chord.length);
+  updateCePreview();
+  ta.focus();
+}
 
 function toggleConverter() {
   ceConverterOpen = !ceConverterOpen;
+  ceShowToolbar(!ceConverterOpen && ceMode === 'chords');
   document.getElementById('ce-editor-view').style.display    = ceConverterOpen ? 'none'  : 'flex';
   document.getElementById('ce-converter-view').style.display = ceConverterOpen ? 'flex'  : 'none';
   const btn = document.getElementById('ce-convert-btn');
@@ -1193,9 +1349,8 @@ function openChordEditor() {
   // Show song title for context
   const title = document.getElementById('f-title').value.trim();
   document.getElementById('ce-song-title').textContent = title || 'New Song';
-  // Reset to lyrics mode
-  ceMode = 'lyrics';
-  setCeMode('lyrics');
+  // Open in chords mode so the toolbar is visible immediately
+  setCeMode('chords');
   overlay.style.display = 'flex';
   document.getElementById('ce-input').focus();
 }
@@ -1209,6 +1364,7 @@ function closeChordEditor() {
 
 function setCeMode(mode) {
   ceMode = mode;
+  ceShowToolbar(mode === 'chords' && !ceConverterOpen);
   const lBtn = document.getElementById('ce-lyrics-btn');
   const cBtn = document.getElementById('ce-chords-btn');
   if (mode === 'lyrics') {
@@ -2352,7 +2508,7 @@ function lRenderSong() {
     html = chordsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No chord content for this song.</span>';
   } else if (lMode === 'lyrics') {
-    const raw = lSong.lyrics || lSong.chords || '';
+    const raw = lSong.chords || lSong.lyrics || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
   } else {
