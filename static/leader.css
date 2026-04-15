@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════
+   SETLIST NAVIGATOR — leader.css
+   Mobile-first, fluid layout. Edit here, never inline.
+   ══════════════════════════════════════════════════════════════ */
+
 /* ── Design tokens ───────────────────────────────────────────── */
 :root {
   --bg:         #08080f;
@@ -698,3 +703,112 @@ body[data-mode="ipad"] #live-panel.compact .ctrl-bar-btn { min-height:36px; padd
 body[data-mode="ipad"] #live-panel.compact .l-ctrl        { min-height:40px; padding:7px 12px; font-size:.85rem; }
 body[data-mode="ipad"] #live-panel.compact .sig-btn        { min-height:40px; padding:5px 10px; }
 body[data-mode="ipad"] #live-panel.compact #l-song-title   { font-size:clamp(1.4rem,4vw,2.4rem); }
+
+/* ── Chord editor toolbar ─────────────────────────────────────── */
+#ce-toolbar {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+#ce-toolbar.ce-toolbar-hidden { display: none; }
+
+/* Sections row — wraps on narrow screens */
+.ce-tb-section-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Chords row — never wraps, scrolls horizontally */
+.ce-tb-chord-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 7px 12px;
+}
+
+.ce-tb-group-label {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: .82rem;
+  letter-spacing: 2px;
+  color: var(--dim);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.ce-tb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ce-tb-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.ce-tb-scroll::-webkit-scrollbar { display: none; }
+
+.ce-tb-divider {
+  width: 1px;
+  min-width: 1px;
+  background: var(--border);
+  align-self: stretch;
+  margin: 0 3px;
+  flex-shrink: 0;
+}
+
+/* Chips */
+.ce-chip {
+  font-family: 'DM Mono', monospace;
+  font-size: .8rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ce-chip:active,
+.ce-chip:hover { background: var(--amber); color: #000; border-color: var(--amber); }
+
+/* Section chips — amber tint */
+.ce-section {
+  color: var(--amber);
+  border-color: rgba(245,158,11,.35);
+  background: rgba(245,158,11,.07);
+}
+.ce-section:hover,
+.ce-section:active { background: var(--amber); color: #000; border-color: var(--amber); }
+
+/* Nudge arrows */
+.ce-nudge {
+  color: var(--dim);
+  padding: 5px 13px;
+  font-size: .95rem;
+  background: var(--bg);
+}
+.ce-nudge:hover,
+.ce-nudge:active { background: var(--amber); color: #000; border-color: var(--amber); }
+
+/* Modifier chips (+7, sus4, etc.) — subtly dimmer */
+.ce-modifier {
+  color: var(--dim);
+  font-size: .75rem;
+}
+.ce-modifier:hover,
+.ce-modifier:active { background: var(--amber); color: #000; border-color: var(--amber); }
