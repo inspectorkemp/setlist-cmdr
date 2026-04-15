@@ -48,9 +48,26 @@ Each song stores: title, artist, key, capo, time signature, tempo, duration, sta
 
 **Time signature** options are 4/4, 3/4, and 6/8. The metronome uses the correct beats per bar for each song automatically.
 
-**ChordPro format** stores chord names inline with lyrics using square brackets. The song editor includes a fullscreen split editor with live preview and a Convert tool that accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets.
+**ChordPro format** stores chord names inline with lyrics using square brackets. The song editor includes a fullscreen split editor with live preview, a chord insert toolbar, and a Convert tool that accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets.
 
-**Section markers** use the same bracket syntax as chords. Any token that is not a chord name becomes a section header: [Verse 1], [Chorus], [Bridge], etc. A bare repeat reference like a second [Chorus] with no following content renders as a dimmed cue rather than duplicating the text.
+**Section markers** use the same bracket syntax as chords. Any token that is not a chord name becomes a section header: [Verse 1], [Chorus], [Bridge], etc. Section headers appear in all view modes including Lyrics. A bare repeat reference like a second [Chorus] with no following content renders as a dimmed cue rather than duplicating the text.
+
+---
+
+## ChordPro editor
+
+The fullscreen ChordPro editor opens in Chords mode with a two-row toolbar above the text area:
+
+**Sections row** — tap any section name to insert it at the cursor: Intro, Verse 1, Verse 2, Verse 3, Pre-Chorus, Chorus, Bridge, Outro, Tag, Solo.
+
+**Chords row** — horizontally scrollable. Contains:
+- Left and right nudge arrows to move the nearest chord one character at a time
+- All 7 natural chords (C D E F G A B)
+- All 7 minor chords (Am Dm Em Gm Bm Cm Fm)
+- Common accidentals (Bb Eb Ab Db F# C# Gb)
+- Modifiers that append to the nearest chord: +7, maj7, m7, sus2, sus4, add9
+
+Switch to Lyrics mode to hide the toolbar and write plain text without chord syntax. The Convert tool converts chords-above-lyrics format to ChordPro automatically.
 
 ---
 
@@ -59,11 +76,8 @@ Each song stores: title, artist, key, capo, time signature, tempo, duration, sta
 The view mode button on each device cycles through four options:
 
 **Chords** — chord-above-lyric layout (default)
-
-**Lyrics** — plain text, no chords
-
+**Lyrics** — plain text with section markers, no chord notation
 **Consol** — each unique section shown once, all repeats removed
-
 **Melody** — chord names and section markers only, no lyric text
 
 ---
@@ -95,9 +109,7 @@ Click Rehearse on any song in the Songs tab to push it to all musician screens w
 
 ## Metronome
 
-The leader starts the metronome and all connected devices flash in phase. When it starts, a GET READY overlay appears while the clock sync settles. After one full bar, beat numbers (1-2-3-4) pulse on screen on every device simultaneously. Beat 1 is brighter. The perimeter ring pulses behind the numbers.
-
-Time signature is read from the current song. 3/4 cycles 1-2-3 and 6/8 cycles 1-2-3-4-5-6.
+The leader starts the metronome and all connected devices flash in phase. When it starts, a GET READY overlay appears while the clock sync settles. After one full bar, beat numbers pulse on screen on every device simultaneously. Beat 1 is brighter. Time signature is read from the current song — 3/4 cycles 1-2-3 and 6/8 cycles 1-2-3-4-5-6.
 
 Auto-stops after a configurable timeout of 10, 15, 20, or 30 seconds.
 
@@ -270,7 +282,7 @@ sudo journalctl -u     setlist-cmdr -f
 [G]Here comes the [Em]sun, and I [C]say it's all-[D]right
 ```
 
-Chord names in square brackets sit inline before the syllable they fall on. Chords mode renders them above the lyric line. Lyrics mode strips them entirely.
+Chord names in square brackets sit inline before the syllable they fall on. Chords mode renders them above the lyric line. Lyrics mode strips chord notation but keeps section headers.
 
 Section markers use the same brackets. Any token that is not a valid chord name becomes a section header:
 
