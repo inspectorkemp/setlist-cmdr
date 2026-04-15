@@ -1223,7 +1223,7 @@ function renderSong() {
     html = chordsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No chord content for this song.</span>';
   } else if (mode === 'lyrics') {
-    const raw = song.lyrics || song.chords || '';
+    const raw = song.chords || song.lyrics || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
   } else {
