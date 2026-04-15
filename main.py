@@ -27,13 +27,17 @@ DB_PATH = "setlist.db"
 # ──────────────────────────────────────────────────────────────
 def _compute_build_id():
     h = hashlib.md5()
-    for fname in ["static/leader.html", "static/musician.html",
-                  "static/leader.css", "static/sw.js"]:
-        try:
-            with open(fname, "rb") as f:
-                h.update(f.read())
-        except FileNotFoundError:
-            pass
+    try:
+        for root, _, files in os.walk("static"):
+            for fname in sorted(files):
+                if fname.endswith((".html", ".css", ".js", ".json")):
+                    try:
+                        with open(os.path.join(root, fname), "rb") as f:
+                            h.update(f.read())
+                    except (FileNotFoundError, PermissionError):
+                        pass
+    except FileNotFoundError:
+        pass
     return h.hexdigest()[:10]
 
 BUILD_ID = _compute_build_id()
@@ -43,10 +47,16 @@ BUILD_ID = _compute_build_id()
 # Database
 # ──────────────────────────────────────────────────────────────
 
+from contextlib import contextmanager
+
+@contextmanager
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 # ──────────────────────────────────────────────────────────────
 # Schema migrations
@@ -165,38 +175,37 @@ _MIGRATIONS = [
 
 def init_db():
     """Run all pending migrations in version order."""
-    conn = get_db()
+    with get_db() as conn:
 
-    # Ensure app_state exists before we try to read schema_version from it.
-    # This is the one bootstrapping step that must run unconditionally.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS app_state (
-            key   TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-    conn.commit()
+        # Ensure app_state exists before we try to read schema_version from it.
+        # This is the one bootstrapping step that must run unconditionally.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_state (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        conn.commit()
 
-    current = _schema_version(conn)
+        current = _schema_version(conn)
 
-    pending = [(v, desc, fn) for v, desc, fn in _MIGRATIONS if v > current]
-    if pending:
-        for version, desc, fn in pending:
-            try:
-                fn(conn)
-                _set_schema_version(conn, version)
-                print(f"[DB] Migration {version}: {desc} — applied")
-            except Exception as exc:
-                print(f"[DB] Migration {version}: {desc} — FAILED: {exc}")
-                raise RuntimeError(
-                    f"Database migration {version} ('{desc}') failed: {exc}. "
-                    "The database may be in a partial state. "
-                    "Restore from a backup before restarting."
-                ) from exc
-    else:
-        print(f"[DB] Schema up to date (version {current})")
+        pending = [(v, desc, fn) for v, desc, fn in _MIGRATIONS if v > current]
+        if pending:
+            for version, desc, fn in pending:
+                try:
+                    fn(conn)
+                    _set_schema_version(conn, version)
+                    print(f"[DB] Migration {version}: {desc} — applied")
+                except Exception as exc:
+                    print(f"[DB] Migration {version}: {desc} — FAILED: {exc}")
+                    raise RuntimeError(
+                        f"Database migration {version} ('{desc}') failed: {exc}. "
+                        "The database may be in a partial state. "
+                        "Restore from a backup before restarting."
+                    ) from exc
+        else:
+            print(f"[DB] Schema up to date (version {current})")
 
-    conn.close()
 
 # ──────────────────────────────────────────────────────────────
 # Live state  (persisted to DB so server restarts are transparent)
@@ -206,21 +215,19 @@ import json as _json
 
 def _save_state(key: str, value: dict):
     """Persist a state dict to app_state table."""
-    conn = get_db()
-    conn.execute(
-        "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)",
-        (key, _json.dumps(value))
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)",
+            (key, _json.dumps(value))
+        )
+        conn.commit()
 
 def _load_state(key: str, default: dict) -> dict:
     """Load a state dict from app_state table, returning default if missing.
     Safe to call before init_db() — returns default if table does not exist yet."""
     try:
-        conn = get_db()
-        row = conn.execute("SELECT value FROM app_state WHERE key=?", (key,)).fetchone()
-        conn.close()
+        with get_db() as conn:
+            row = conn.execute("SELECT value FROM app_state WHERE key=?", (key,)).fetchone()
         if row:
             try:
                 return _json.loads(row[0])
@@ -255,9 +262,8 @@ def _validate_live_state():
     if sl_id is None:
         # Rehearsal mode with embedded song — valid, leave it
         return
-    conn = get_db()
-    row = conn.execute("SELECT id FROM setlists WHERE id=?", (sl_id,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        row = conn.execute("SELECT id FROM setlists WHERE id=?", (sl_id,)).fetchone()
     if not row:
         # Setlist was deleted — reset gracefully
         live_state.update({
@@ -315,27 +321,49 @@ manager = ConnectionManager()
 # Auth — PIN-based sessions
 # ──────────────────────────────────────────────────────────────
 
-# In-memory sessions: token -> expiry epoch
+# Sessions: token -> expiry epoch. Persisted so they survive restarts.
 _sessions: dict[str, float] = {}
 _SESSION_TTL = 86400  # 24 hours
+
+def _load_sessions():
+    import json as _j
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT value FROM app_state WHERE key='_sessions'").fetchone()
+            if row:
+                now = time.time()
+                _sessions.update({k: v for k, v in _j.loads(row[0]).items() if v > now})
+    except Exception:
+        pass
+
+def _persist_sessions():
+    import json as _j
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO app_state (key, value) VALUES ('_sessions', ?)",
+                (_j.dumps(_sessions),)
+            )
+            conn.commit()
+    except Exception:
+        pass
 _bearer = HTTPBearer(auto_error=False)
 
 def _get_pin() -> str:
     """Return the configured PIN from app_state, defaulting to 1234."""
-    conn = get_db()
-    row  = conn.execute("SELECT value FROM app_state WHERE key='leader_pin'").fetchone()
-    conn.close()
+    with get_db() as conn:
+        row  = conn.execute("SELECT value FROM app_state WHERE key='leader_pin'").fetchone()
     return row[0] if row else "1234"
 
 def _set_pin(new_pin: str):
-    conn = get_db()
-    conn.execute("INSERT OR REPLACE INTO app_state (key,value) VALUES ('leader_pin',?)", (new_pin,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("INSERT OR REPLACE INTO app_state (key,value) VALUES ('leader_pin',?)", (new_pin,))
+        conn.commit()
 
 def _new_token() -> str:
     token = secrets.token_urlsafe(32)
     _sessions[token] = time.time() + _SESSION_TTL
+    _persist_sessions()
     return token
 
 def _valid_token(token: str) -> bool:
@@ -361,84 +389,83 @@ app = FastAPI(title="Setlist CMDR")
 def _seed_demo_data():
     """Populate demo songs and a sample setlist on a brand-new empty database.
     Skips silently if any songs already exist."""
-    conn = get_db()
-    count = conn.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
-    if count > 0:
-        conn.close()
-        return
+    with get_db() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
+        if count > 0:
+            return
 
-    songs = [
-        {
-            "title":    "Come Together",
-            "artist":   "The Beatles",
-            "song_key": "Dm",
-            "tempo":    82,
-            "duration": 259,
-            "status":   "active",
-            "lyrics":   "Here come old flat top\nHe come grooving up slowly\nHe got joo joo eyeball\nHe one holy roller\nHe got hair down to his knee\nGot to be a joker he just do what he please\n\nHe wear no shoeshine\nHe got toe jam football\nHe got monkey finger\nHe shoot Coca Cola\nHe say I know you, you know me\nOne thing I can tell you is you got to be free\nCome together, right now\nOver me",
-            "chords":   "[Dm]Here come old flat top\nHe come grooving up [A]slowly\nHe got [Dm]joo joo eyeball\nHe [A]one holy roller\nHe got [Dm]hair down to his knee\nGot to be a joker he just [A]do what he please\n\n[Dm]He wear no shoeshine\nHe got [A]toe jam football\nHe got [Dm]monkey finger\nHe [A]shoot Coca Cola\nHe say [Dm]I know you, you know me\nOne thing I can tell you is you got to be [A]free\n[D]Come together, [A]right now\n[Dm]Over me",
-            "notes":    "Key riff on bass. Slow groove, keep it loose.",
-        },
-        {
-            "title":    "Wonderwall",
-            "artist":   "Oasis",
-            "song_key": "F#m",
-            "tempo":    87,
-            "duration": 258,
-            "status":   "active",
-            "lyrics":   "Today is gonna be the day\nThat they're gonna throw it back to you\nBy now you should've somehow\nRealized what you gotta do\nI don't believe that anybody\nFeels the way I do about you now\n\nAnd after all, you're my wonderwall",
-            "chords":   "[Em7]Today is gonna be the day\nThat they're gonna throw it [G]back to you\n[Dsus4]By now you should've somehow\n[A7sus4]Realized what you gotta do\n[Em7]I don't believe that anybody\n[G]Feels the way I [Dsus4]do about [A7sus4]you now\n\nBecause [Em7]maybe, [G]you're gonna be the one that [Dsus4]saves me\n[A7sus4]And after all, [Em7]you're my [G]wonderwall [Dsus4][A7sus4]",
-            "notes":    "Capo 2. Em7=022033, G=320033, Dsus4=xx0233, A7sus4=x02030.",
-        },
-        {
-            "title":    "Hotel California",
-            "artist":   "Eagles",
-            "song_key": "Bm",
-            "tempo":    75,
-            "duration": 391,
-            "status":   "active",
-            "lyrics":   "On a dark desert highway\nCool wind in my hair\nWarm smell of colitas\nRising up through the air\n\nWelcome to the Hotel California\nSuch a lovely place, such a lovely face\nPlenty of room at the Hotel California\nAny time of year, you can find it here",
-            "chords":   "[Bm]On a dark desert [F#]highway\n[A]Cool wind in my [E]hair\n[G]Warm smell of [D]colitas\n[Em]Rising up through the [F#]air\n\n[G]Welcome to the Hotel [D]California\n[F#]Such a lovely place, such a [Bm]lovely face\n[G]Plenty of room at the Hotel [D]California\n[Em]Any time of year, [F#]you can find it here",
-            "notes":    "Iconic 12-string guitar intro. Long outro solo.",
-        },
-        {
-            "title":    "Sweet Home Chicago",
-            "artist":   "Robert Johnson",
-            "song_key": "E",
-            "tempo":    120,
-            "duration": 185,
-            "status":   "active",
-            "lyrics":   "Oh baby, don't you want to go\nBack to the land of California\nTo my sweet home Chicago\n\nNow one and one is two\nTwo and two is four\nCome on baby don't you want to go\nBack to my sweet home Chicago",
-            "chords":   "[E7]Oh baby, don't you want to go\n[A7]Back to the land of California\n[E7]To my sweet home [B7]Chicago\n\n[E7]Now one and one is two\n[A7]Two and two is four\n[A7]Come on baby don't you want to go\n[B7]To my sweet home [E7]Chicago",
-            "notes":    "12-bar blues in E. Standard shuffle feel.",
-        },
-    ]
+        songs = [
+            {
+                "title":    "Come Together",
+                "artist":   "The Beatles",
+                "song_key": "Dm",
+                "tempo":    82,
+                "duration": 259,
+                "status":   "active",
+                "lyrics":   "Here come old flat top\nHe come grooving up slowly\nHe got joo joo eyeball\nHe one holy roller\nHe got hair down to his knee\nGot to be a joker he just do what he please\n\nHe wear no shoeshine\nHe got toe jam football\nHe got monkey finger\nHe shoot Coca Cola\nHe say I know you, you know me\nOne thing I can tell you is you got to be free\nCome together, right now\nOver me",
+                "chords":   "[Dm]Here come old flat top\nHe come grooving up [A]slowly\nHe got [Dm]joo joo eyeball\nHe [A]one holy roller\nHe got [Dm]hair down to his knee\nGot to be a joker he just [A]do what he please\n\n[Dm]He wear no shoeshine\nHe got [A]toe jam football\nHe got [Dm]monkey finger\nHe [A]shoot Coca Cola\nHe say [Dm]I know you, you know me\nOne thing I can tell you is you got to be [A]free\n[D]Come together, [A]right now\n[Dm]Over me",
+                "notes":    "Key riff on bass. Slow groove, keep it loose.",
+            },
+            {
+                "title":    "Wonderwall",
+                "artist":   "Oasis",
+                "song_key": "F#m",
+                "tempo":    87,
+                "duration": 258,
+                "status":   "active",
+                "lyrics":   "Today is gonna be the day\nThat they're gonna throw it back to you\nBy now you should've somehow\nRealized what you gotta do\nI don't believe that anybody\nFeels the way I do about you now\n\nAnd after all, you're my wonderwall",
+                "chords":   "[Em7]Today is gonna be the day\nThat they're gonna throw it [G]back to you\n[Dsus4]By now you should've somehow\n[A7sus4]Realized what you gotta do\n[Em7]I don't believe that anybody\n[G]Feels the way I [Dsus4]do about [A7sus4]you now\n\nBecause [Em7]maybe, [G]you're gonna be the one that [Dsus4]saves me\n[A7sus4]And after all, [Em7]you're my [G]wonderwall [Dsus4][A7sus4]",
+                "notes":    "Capo 2. Em7=022033, G=320033, Dsus4=xx0233, A7sus4=x02030.",
+            },
+            {
+                "title":    "Hotel California",
+                "artist":   "Eagles",
+                "song_key": "Bm",
+                "tempo":    75,
+                "duration": 391,
+                "status":   "active",
+                "lyrics":   "On a dark desert highway\nCool wind in my hair\nWarm smell of colitas\nRising up through the air\n\nWelcome to the Hotel California\nSuch a lovely place, such a lovely face\nPlenty of room at the Hotel California\nAny time of year, you can find it here",
+                "chords":   "[Bm]On a dark desert [F#]highway\n[A]Cool wind in my [E]hair\n[G]Warm smell of [D]colitas\n[Em]Rising up through the [F#]air\n\n[G]Welcome to the Hotel [D]California\n[F#]Such a lovely place, such a [Bm]lovely face\n[G]Plenty of room at the Hotel [D]California\n[Em]Any time of year, [F#]you can find it here",
+                "notes":    "Iconic 12-string guitar intro. Long outro solo.",
+            },
+            {
+                "title":    "Sweet Home Chicago",
+                "artist":   "Robert Johnson",
+                "song_key": "E",
+                "tempo":    120,
+                "duration": 185,
+                "status":   "active",
+                "lyrics":   "Oh baby, don't you want to go\nBack to the land of California\nTo my sweet home Chicago\n\nNow one and one is two\nTwo and two is four\nCome on baby don't you want to go\nBack to my sweet home Chicago",
+                "chords":   "[E7]Oh baby, don't you want to go\n[A7]Back to the land of California\n[E7]To my sweet home [B7]Chicago\n\n[E7]Now one and one is two\n[A7]Two and two is four\n[A7]Come on baby don't you want to go\n[B7]To my sweet home [E7]Chicago",
+                "notes":    "12-bar blues in E. Standard shuffle feel.",
+            },
+        ]
 
-    song_ids = []
-    for s in songs:
+        song_ids = []
+        for s in songs:
+            cur = conn.execute(
+                """INSERT INTO songs (title, artist, song_key, tempo, duration,
+                   status, lyrics, chords, notes) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (s["title"], s["artist"], s["song_key"], s["tempo"], s["duration"],
+                 s["status"], s["lyrics"], s["chords"], s["notes"])
+            )
+            song_ids.append(cur.lastrowid)
+
         cur = conn.execute(
-            """INSERT INTO songs (title, artist, song_key, tempo, duration,
-               status, lyrics, chords, notes) VALUES (?,?,?,?,?,?,?,?,?)""",
-            (s["title"], s["artist"], s["song_key"], s["tempo"], s["duration"],
-             s["status"], s["lyrics"], s["chords"], s["notes"])
+            "INSERT INTO setlists (name, description, active, position) VALUES (?,?,1,0)",
+            ("Sample Set", "Demo setlist")
         )
-        song_ids.append(cur.lastrowid)
-
-    cur = conn.execute(
-        "INSERT INTO setlists (name, description, active, position) VALUES (?,?,1,0)",
-        ("Sample Set", "Demo setlist")
-    )
-    sl_id = cur.lastrowid
-    for pos, sid in enumerate(song_ids[:2]):
-        conn.execute(
-            "INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES (?,?,?)",
-            (sl_id, sid, pos)
-        )
-    conn.commit()
-    conn.close()
+        sl_id = cur.lastrowid
+        for pos, sid in enumerate(song_ids[:2]):
+            conn.execute(
+                "INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES (?,?,?)",
+                (sl_id, sid, pos)
+            )
+        conn.commit()
 init_db()
 _validate_live_state()
 _seed_demo_data()
+_load_sessions()
 os.makedirs("static", exist_ok=True)
 
 # ── Pydantic models ───────────────────────────────────────────
@@ -508,23 +535,22 @@ def change_pin(body: PinChangeIn):
     _set_pin(body.new_pin)
     # Invalidate all existing sessions so everyone re-authenticates
     _sessions.clear()
+    _persist_sessions()
     return {"ok": True}
 
 @app.get("/api/auth/status")
 def auth_status():
     """Returns whether a PIN has been explicitly set (vs still the default)."""
-    conn = get_db()
-    row  = conn.execute("SELECT value FROM app_state WHERE key='leader_pin'").fetchone()
-    conn.close()
+    with get_db() as conn:
+        row  = conn.execute("SELECT value FROM app_state WHERE key='leader_pin'").fetchone()
     return {"pin_is_default": row is None}
 
 # ── Band members ───────────────────────────────────────────────
 
 @app.get("/api/band_members")
 def list_band_members():
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM band_members ORDER BY position, name").fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM band_members ORDER BY position, name").fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/band_members", dependencies=[Depends(require_auth)])
@@ -532,94 +558,85 @@ def add_band_member(body: BandMemberIn):
     name = body.name.strip()[:40]
     if not name:
         raise HTTPException(400, "Name required")
-    conn = get_db()
-    try:
-        conn.execute("INSERT INTO band_members (name) VALUES (?)", (name,))
-        conn.commit()
-        row = conn.execute("SELECT * FROM band_members WHERE name=?", (name,)).fetchone()
-    except sqlite3.IntegrityError:
-        conn.close()
-        raise HTTPException(409, "Name already exists")
-    conn.close()
+    with get_db() as conn:
+        try:
+            conn.execute("INSERT INTO band_members (name) VALUES (?)", (name,))
+            conn.commit()
+            row = conn.execute("SELECT * FROM band_members WHERE name=?", (name,)).fetchone()
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "Name already exists")
     return dict(row)
 
 @app.delete("/api/band_members/{member_id}", dependencies=[Depends(require_auth)])
 def delete_band_member(member_id: int):
-    conn = get_db()
-    conn.execute("DELETE FROM band_members WHERE id=?", (member_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("DELETE FROM band_members WHERE id=?", (member_id,))
+        conn.commit()
     return {"ok": True}
 
 @app.put("/api/band_members/reorder", dependencies=[Depends(require_auth)])
 def reorder_band_members(body: ReorderIn):
-    conn = get_db()
-    for pos, mid in enumerate(body.order):
-        conn.execute("UPDATE band_members SET position=? WHERE id=?", (pos, mid))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        for pos, mid in enumerate(body.order):
+            conn.execute("UPDATE band_members SET position=? WHERE id=?", (pos, mid))
+        conn.commit()
     return {"ok": True}
 
 # ── Songs ─────────────────────────────────────────────────────
 
 @app.get("/api/songs")
 def list_songs(status: Optional[str] = None):
-    conn = get_db()
-    if status:
-        rows = conn.execute(
-            "SELECT * FROM songs WHERE status=? ORDER BY title", (status,)
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM songs ORDER BY title").fetchall()
-    conn.close()
+    with get_db() as conn:
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM songs WHERE status=? ORDER BY title", (status,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM songs ORDER BY title").fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/songs", status_code=201, dependencies=[Depends(require_auth)])
 def create_song(song: SongIn):
-    conn = get_db()
-    cur = conn.execute(
-        "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo,
-         song.time_sig or '4/4', song.duration,
-         song.status, song.lyrics, song.chords, song.notes)
-    )
-    conn.commit()
-    row = conn.execute("SELECT * FROM songs WHERE id=?", (cur.lastrowid,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (song.title, song.artist, song.song_key, song.capo or 0, song.tempo,
+             song.time_sig or '4/4', song.duration,
+             song.status, song.lyrics, song.chords, song.notes)
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM songs WHERE id=?", (cur.lastrowid,)).fetchone()
     return dict(row)
 
 @app.get("/api/songs/{song_id}")
 def get_song(song_id: int):
-    conn = get_db()
-    row = conn.execute("SELECT * FROM songs WHERE id=?", (song_id,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM songs WHERE id=?", (song_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Song not found")
     return dict(row)
 
 @app.put("/api/songs/{song_id}", dependencies=[Depends(require_auth)])
 def update_song(song_id: int, song: SongIn):
-    conn = get_db()
-    conn.execute(
-        "UPDATE songs SET title=?,artist=?,song_key=?,capo=?,tempo=?,time_sig=?,duration=?,status=?,"
-        "lyrics=?,chords=?,notes=? WHERE id=?",
-        (song.title, song.artist, song.song_key, song.capo or 0, song.tempo,
-         song.time_sig or '4/4', song.duration,
-         song.status, song.lyrics, song.chords, song.notes, song_id)
-    )
-    conn.commit()
-    row = conn.execute("SELECT * FROM songs WHERE id=?", (song_id,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE songs SET title=?,artist=?,song_key=?,capo=?,tempo=?,time_sig=?,duration=?,status=?,"
+            "lyrics=?,chords=?,notes=? WHERE id=?",
+            (song.title, song.artist, song.song_key, song.capo or 0, song.tempo,
+             song.time_sig or '4/4', song.duration,
+             song.status, song.lyrics, song.chords, song.notes, song_id)
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM songs WHERE id=?", (song_id,)).fetchone()
     return dict(row)
 
 @app.delete("/api/songs/{song_id}", dependencies=[Depends(require_auth)])
 def delete_song(song_id: int):
-    conn = get_db()
-    conn.execute("DELETE FROM setlist_songs WHERE song_id=?", (song_id,))
-    conn.execute("DELETE FROM songs WHERE id=?", (song_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("DELETE FROM setlist_songs WHERE song_id=?", (song_id,))
+        conn.execute("DELETE FROM songs WHERE id=?", (song_id,))
+        conn.commit()
     return {"ok": True}
 
 # ── Song file import ─────────────────────────────────────────
@@ -752,20 +769,19 @@ async def import_songs_batch(file: UploadFile = File(...)):
         if not result["ok"]:
             raise HTTPException(400, result["error"])
         # Write single song to DB
-        conn = get_db()
-        dest = "chords" if result["is_chordpro"] else "lyrics"
-        cur = conn.execute(
-            "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
-             "active",
-             None if dest == "chords" else result["raw"],
-             result["raw"] if dest == "chords" else None,
-             None)
-        )
-        conn.commit()
-        song_id = cur.lastrowid
-        conn.close()
+        with get_db() as conn:
+            dest = "chords" if result["is_chordpro"] else "lyrics"
+            cur = conn.execute(
+                "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
+                 "active",
+                 None if dest == "chords" else result["raw"],
+                 result["raw"] if dest == "chords" else None,
+                 None)
+            )
+            conn.commit()
+            song_id = cur.lastrowid
         return {"imported": 1, "skipped": 0, "results": [{
             "filename": result["filename"],
             "ok": True,
@@ -779,216 +795,204 @@ async def import_songs_batch(file: UploadFile = File(...)):
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
         raise HTTPException(400, "File is not a valid zip archive")
+    with zf:
 
-    SUPPORTED = (".pdf", ".txt", ".chopro", ".cho", ".crd", ".chordpro", ".pro", ".onsong")
-    entries = [
-        n for n in zf.namelist()
-        if not n.startswith("__MACOSX")          # skip macOS metadata
-        and not os.path.basename(n).startswith(".")  # skip hidden files
-        and n.lower().endswith(SUPPORTED)
-    ]
+        SUPPORTED = (".pdf", ".txt", ".chopro", ".cho", ".crd", ".chordpro", ".pro", ".onsong")
+        entries = [
+            n for n in zf.namelist()
+            if not n.startswith("__MACOSX")          # skip macOS metadata
+            and not os.path.basename(n).startswith(".")  # skip hidden files
+            and n.lower().endswith(SUPPORTED)
+        ]
 
-    if not entries:
-        raise HTTPException(400, "Zip contains no supported song files (.chopro .cho .crd .txt .pdf .onsong)")
+        if not entries:
+            raise HTTPException(400, "Zip contains no supported song files (.chopro .cho .crd .txt .pdf .onsong)")
 
-    conn = get_db()
-    results = []
-    imported = 0
-    skipped = 0
+        with get_db() as conn:
+            results = []
+            imported = 0
+            skipped = 0
 
-    for entry in entries:
-        basename = os.path.basename(entry)
-        file_data = zf.read(entry)
-        result = _process_one_file(basename, file_data)
+            for entry in entries:
+                basename = os.path.basename(entry)
+                file_data = zf.read(entry)
+                result = _process_one_file(basename, file_data)
 
-        if not result["ok"]:
-            results.append({"filename": basename, "ok": False, "error": result["error"]})
-            skipped += 1
-            continue
+                if not result["ok"]:
+                    results.append({"filename": basename, "ok": False, "error": result["error"]})
+                    skipped += 1
+                    continue
 
-        # Skip duplicates — same title already in library
-        existing = conn.execute(
-            "SELECT id FROM songs WHERE LOWER(title)=LOWER(?)", (result["title"],)
-        ).fetchone()
-        if existing:
-            results.append({
-                "filename": basename, "ok": False,
-                "error": f"Skipped — song titled '{result['title']}' already exists",
-                "duplicate": True,
-            })
-            skipped += 1
-            continue
+                # Skip duplicates — same title already in library
+                existing = conn.execute(
+                    "SELECT id FROM songs WHERE LOWER(title)=LOWER(?)", (result["title"],)
+                ).fetchone()
+                if existing:
+                    results.append({
+                        "filename": basename, "ok": False,
+                        "error": f"Skipped — song titled '{result['title']}' already exists",
+                        "duplicate": True,
+                    })
+                    skipped += 1
+                    continue
 
-        dest = "chords" if result["is_chordpro"] else "lyrics"
-        try:
-            cur = conn.execute(
-                "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
-                 "active",
-                 None if dest == "chords" else result["raw"],
-                 result["raw"] if dest == "chords" else None,
-                 None)
-            )
-            conn.commit()
-            results.append({
-                "filename": basename,
-                "ok":       True,
-                "title":    result["title"],
-                "artist":   result["artist"],
-                "song_id":  cur.lastrowid,
-            })
-            imported += 1
-        except Exception as exc:
-            results.append({"filename": basename, "ok": False, "error": str(exc)})
-            skipped += 1
+                dest = "chords" if result["is_chordpro"] else "lyrics"
+                try:
+                    cur = conn.execute(
+                        "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
+                         "active",
+                         None if dest == "chords" else result["raw"],
+                         result["raw"] if dest == "chords" else None,
+                         None)
+                    )
+                    conn.commit()
+                    results.append({
+                        "filename": basename,
+                        "ok":       True,
+                        "title":    result["title"],
+                        "artist":   result["artist"],
+                        "song_id":  cur.lastrowid,
+                    })
+                    imported += 1
+                except Exception as exc:
+                    results.append({"filename": basename, "ok": False, "error": str(exc)})
+                    skipped += 1
 
-    conn.close()
-    return {"imported": imported, "skipped": skipped, "results": results}
+        return {"imported": imported, "skipped": skipped, "results": results}
 
 # ── Setlists ──────────────────────────────────────────────────
 
 @app.get("/api/setlists")
 def list_setlists():
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM setlists ORDER BY position ASC, created_at DESC").fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM setlists ORDER BY position ASC, created_at DESC").fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/setlists", status_code=201, dependencies=[Depends(require_auth)])
 def create_setlist(sl: SetlistIn):
-    conn = get_db()
-    max_pos = conn.execute("SELECT COALESCE(MAX(position),0) FROM setlists").fetchone()[0]
-    cur = conn.execute(
-        "INSERT INTO setlists (name,description,active,position) VALUES (?,?,1,?)",
-        (sl.name, sl.description, max_pos + 1)
-    )
-    conn.commit()
-    row = conn.execute("SELECT * FROM setlists WHERE id=?", (cur.lastrowid,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        max_pos = conn.execute("SELECT COALESCE(MAX(position),0) FROM setlists").fetchone()[0]
+        cur = conn.execute(
+            "INSERT INTO setlists (name,description,active,position) VALUES (?,?,1,?)",
+            (sl.name, sl.description, max_pos + 1)
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM setlists WHERE id=?", (cur.lastrowid,)).fetchone()
     return dict(row)
 
 @app.put("/api/setlists/reorder", dependencies=[Depends(require_auth)])
 def reorder_setlists(body: SetlistReorderIn):
-    conn = get_db()
-    for i, sl_id in enumerate(body.order):
-        conn.execute("UPDATE setlists SET position=? WHERE id=?", (i, sl_id))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        for i, sl_id in enumerate(body.order):
+            conn.execute("UPDATE setlists SET position=? WHERE id=?", (i, sl_id))
+        conn.commit()
     return {"ok": True}
 
 @app.put("/api/setlists/{sl_id}", dependencies=[Depends(require_auth)])
 def update_setlist(sl_id: int, sl: SetlistIn):
-    conn = get_db()
-    if sl.active is not None:
-        conn.execute(
-            "UPDATE setlists SET name=?,description=?,active=? WHERE id=?",
-            (sl.name, sl.description, sl.active, sl_id)
-        )
-    else:
-        conn.execute(
-            "UPDATE setlists SET name=?,description=? WHERE id=?",
-            (sl.name, sl.description, sl_id)
-        )
-    conn.commit()
-    row = conn.execute("SELECT * FROM setlists WHERE id=?", (sl_id,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        if sl.active is not None:
+            conn.execute(
+                "UPDATE setlists SET name=?,description=?,active=? WHERE id=?",
+                (sl.name, sl.description, sl.active, sl_id)
+            )
+        else:
+            conn.execute(
+                "UPDATE setlists SET name=?,description=? WHERE id=?",
+                (sl.name, sl.description, sl_id)
+            )
+        conn.commit()
+        row = conn.execute("SELECT * FROM setlists WHERE id=?", (sl_id,)).fetchone()
     return dict(row)
 
 @app.delete("/api/setlists/{sl_id}", dependencies=[Depends(require_auth)])
 def delete_setlist(sl_id: int):
-    conn = get_db()
-    conn.execute("DELETE FROM setlist_songs WHERE setlist_id=?", (sl_id,))
-    conn.execute("DELETE FROM setlists WHERE id=?", (sl_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("DELETE FROM setlist_songs WHERE setlist_id=?", (sl_id,))
+        conn.execute("DELETE FROM setlists WHERE id=?", (sl_id,))
+        conn.commit()
     return {"ok": True}
 
 @app.post("/api/setlists/{sl_id}/clone", status_code=201, dependencies=[Depends(require_auth)])
 def clone_setlist(sl_id: int):
-    conn = get_db()
-    original = conn.execute("SELECT * FROM setlists WHERE id=?", (sl_id,)).fetchone()
-    if not original:
-        conn.close()
-        raise HTTPException(404, "Setlist not found")
-    new_name = original["name"] + " (copy)"
-    cur = conn.execute(
-        "INSERT INTO setlists (name,description) VALUES (?,?)",
-        (new_name, original["description"])
-    )
-    new_id = cur.lastrowid
-    songs = conn.execute(
-        "SELECT song_id, position, section_label FROM setlist_songs WHERE setlist_id=? ORDER BY position",
-        (sl_id,)
-    ).fetchall()
-    for s in songs:
-        conn.execute(
-            "INSERT INTO setlist_songs (setlist_id,song_id,position,section_label) VALUES (?,?,?,?)",
-            (new_id, s["song_id"], s["position"], s["section_label"])
+    with get_db() as conn:
+        original = conn.execute("SELECT * FROM setlists WHERE id=?", (sl_id,)).fetchone()
+        if not original:
+            raise HTTPException(404, "Setlist not found")
+        new_name = original["name"] + " (copy)"
+        cur = conn.execute(
+            "INSERT INTO setlists (name,description) VALUES (?,?)",
+            (new_name, original["description"])
         )
-    conn.commit()
-    row = conn.execute("SELECT * FROM setlists WHERE id=?", (new_id,)).fetchone()
-    conn.close()
+        new_id = cur.lastrowid
+        songs = conn.execute(
+            "SELECT song_id, position, section_label FROM setlist_songs WHERE setlist_id=? ORDER BY position",
+            (sl_id,)
+        ).fetchall()
+        for s in songs:
+            conn.execute(
+                "INSERT INTO setlist_songs (setlist_id,song_id,position,section_label) VALUES (?,?,?,?)",
+                (new_id, s["song_id"], s["position"], s["section_label"])
+            )
+        conn.commit()
+        row = conn.execute("SELECT * FROM setlists WHERE id=?", (new_id,)).fetchone()
     return dict(row)
 
 @app.get("/api/setlists/{sl_id}/songs")
 def get_setlist_songs(sl_id: int):
-    conn = get_db()
-    rows = conn.execute("""
-        SELECT ss.id as ss_id, ss.position, ss.section_label, s.*
-        FROM setlist_songs ss
-        JOIN songs s ON ss.song_id = s.id
-        WHERE ss.setlist_id = ?
-        ORDER BY ss.position
-    """, (sl_id,)).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT ss.id as ss_id, ss.position, ss.section_label, s.*
+            FROM setlist_songs ss
+            JOIN songs s ON ss.song_id = s.id
+            WHERE ss.setlist_id = ?
+            ORDER BY ss.position
+        """, (sl_id,)).fetchall()
     return [dict(r) for r in rows]
 
 @app.post("/api/setlists/{sl_id}/songs", status_code=201, dependencies=[Depends(require_auth)])
 def add_song_to_setlist(sl_id: int, entry: SetlistSongIn):
-    conn = get_db()
-    # find max position
-    row = conn.execute(
-        "SELECT MAX(position) as mp FROM setlist_songs WHERE setlist_id=?", (sl_id,)
-    ).fetchone()
-    pos = (row["mp"] or -1) + 1
-    conn.execute(
-        "INSERT INTO setlist_songs (setlist_id,song_id,position,section_label) VALUES (?,?,?,?)",
-        (sl_id, entry.song_id, pos, entry.section_label)
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        # find max position
+        row = conn.execute(
+            "SELECT MAX(position) as mp FROM setlist_songs WHERE setlist_id=?", (sl_id,)
+        ).fetchone()
+        pos = (row["mp"] or -1) + 1
+        conn.execute(
+            "INSERT INTO setlist_songs (setlist_id,song_id,position,section_label) VALUES (?,?,?,?)",
+            (sl_id, entry.song_id, pos, entry.section_label)
+        )
+        conn.commit()
     return {"ok": True}
 
 @app.put("/api/setlists/{sl_id}/reorder", dependencies=[Depends(require_auth)])
 def reorder_songs(sl_id: int, body: ReorderIn):
-    conn = get_db()
-    for i, ss_id in enumerate(body.order):
-        conn.execute(
-            "UPDATE setlist_songs SET position=? WHERE id=? AND setlist_id=?",
-            (i, ss_id, sl_id)
-        )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        for i, ss_id in enumerate(body.order):
+            conn.execute(
+                "UPDATE setlist_songs SET position=? WHERE id=? AND setlist_id=?",
+                (i, ss_id, sl_id)
+            )
+        conn.commit()
     return {"ok": True}
 
 @app.delete("/api/setlists/{sl_id}/songs/{ss_id}", dependencies=[Depends(require_auth)])
 def remove_from_setlist(sl_id: int, ss_id: int):
-    conn = get_db()
-    conn.execute("DELETE FROM setlist_songs WHERE id=? AND setlist_id=?", (ss_id, sl_id))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("DELETE FROM setlist_songs WHERE id=? AND setlist_id=?", (ss_id, sl_id))
+        conn.commit()
     return {"ok": True}
 
 @app.put("/api/setlists/{sl_id}/songs/{ss_id}/section", dependencies=[Depends(require_auth)])
 def set_section_label(sl_id: int, ss_id: int, body: dict):
-    conn = get_db()
-    conn.execute(
-        "UPDATE setlist_songs SET section_label=? WHERE id=? AND setlist_id=?",
-        (body.get("label"), ss_id, sl_id)
-    )
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE setlist_songs SET section_label=? WHERE id=? AND setlist_id=?",
+            (body.get("label"), ss_id, sl_id)
+        )
+        conn.commit()
     return {"ok": True}
 
 # ── Live state ────────────────────────────────────────────────
@@ -1013,9 +1017,8 @@ async def set_live(state: LiveIn):
 @app.post("/api/rehearsal/deploy", dependencies=[Depends(require_auth)])
 async def deploy_rehearsal(body: RehearsalDeployIn):
     """Sets is_live=True with a single song embedded. No setlist needed."""
-    conn = get_db()
-    row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Song not found")
     song = dict(row)
@@ -1039,9 +1042,8 @@ def get_rehearsal():
 
 @app.post("/api/rehearsal", dependencies=[Depends(require_auth)])
 async def start_rehearsal(body: RehearsalIn):
-    conn = get_db()
-    row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
-    conn.close()
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM songs WHERE id=?", (body.song_id,)).fetchone()
     if not row:
         raise HTTPException(404, "Song not found")
     rehearsal_state["active"] = True
