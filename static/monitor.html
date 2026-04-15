@@ -1200,7 +1200,7 @@ function renderSong() {
     html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   } else {
-    const raw = song.lyrics || song.chords || '';
+    const raw = song.chords || song.lyrics || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   }
