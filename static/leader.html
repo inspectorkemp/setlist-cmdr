@@ -35,6 +35,38 @@ if ('serviceWorker' in navigator) {
   font-family:inherit; font-size:.85rem;
 }
 </style>
+
+<style id="debug-css">
+#debug-overlay {
+  display: none;
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 9999;
+  background: rgba(0,0,0,.85);
+  border: 1px solid rgba(245,158,11,.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: .72rem;
+  line-height: 1.7;
+  color: #e8e8f0;
+  min-width: 220px;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+#debug-overlay.visible { display: block; }
+#debug-overlay .db-head {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: .9rem;
+  letter-spacing: 2px;
+  color: #f59e0b;
+  margin-bottom: 4px;
+}
+#debug-overlay .db-ok   { color: #4ade80; }
+#debug-overlay .db-warn { color: #f59e0b; }
+#debug-overlay .db-err  { color: #f87171; }
+</style>
 </head>
 <body data-mode="ipad">
 <div id="sw-update-banner">
@@ -138,7 +170,7 @@ if ('serviceWorker' in navigator) {
          onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">
         ⚙ SETTINGS
       </button>
-      <div id="musician-count" onclick="toggleRoster()" title="Click to see who's connected"
+      <div id="musician-count" onclick="_debugToggle()" style="cursor:pointer;" onclick="toggleRoster()" title="Click to see who's connected"
            style="cursor:pointer;">◈ 0 CREW</div>
     </div>
   </div>
@@ -544,6 +576,38 @@ if ('serviceWorker' in navigator) {
         </button>
         <div id="mon-push-status"
              style="font-size:.75rem;color:var(--dim);text-align:center;margin-top:6px;min-height:1em;"></div>
+      </div>
+
+
+      <!-- Standby Logo -->
+      <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+        <label style="display:block;font-size:.72rem;color:var(--dim);
+               text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+          Standby Logo
+        </label>
+        <p style="font-size:.78rem;color:var(--dim);line-height:1.6;margin-bottom:14px;">
+          Upload a band or venue logo to show on all standby screens. PNG, JPG, WebP, SVG — max 5 MB.
+        </p>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <img id="standby-logo-preview" src=""
+               style="display:none;width:80px;height:56px;object-fit:contain;
+                      background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px;">
+          <div style="flex:1;">
+            <input type="file" id="standby-logo-file" accept="image/*"
+                   style="display:none;" onchange="uploadStandbyLogo(this)">
+            <button class="btn" onclick="document.getElementById('standby-logo-file').click()"
+                    style="width:100%;margin-bottom:6px;">
+              ↑ Upload Image
+            </button>
+            <button id="standby-logo-remove-btn" class="btn danger"
+                    onclick="removeStandbyLogo()"
+                    style="width:100%;display:none;">
+              ✕ Remove Custom Logo
+            </button>
+          </div>
+        </div>
+        <div id="standby-logo-status"
+             style="font-size:.75rem;color:var(--dim);min-height:1em;text-align:center;"></div>
       </div>
 
       <!-- Lock -->
@@ -2727,6 +2791,7 @@ let leaderWs = null;
   const ws = new WebSocket(`${proto}//${location.host}/ws`);
   leaderWs = ws;
   ws.onmessage = e => {
+    _lastWsMsgMs = Date.now();
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'roster_update') updateMusicianCount(msg.count, msg.musicians);
@@ -2738,7 +2803,7 @@ let leaderWs = null;
   ws.onerror = () => ws.close();
   ws.onopen  = () => {
     ws.send('name:');
-    syncSamples = [];
+    syncSamples = []; _syncDone = false;
     syncClock();
     // Send scroll position so any connected monitor syncs immediately
     setTimeout(_broadcastScroll, 500);
@@ -2753,9 +2818,74 @@ setInterval(async () => {
   } catch {}
 }, 10000);
 
+
+// ── Debug overlay ──────────────────────────────────────────────
+let _debugOn      = location.search.includes('debug=1');
+let _lastRtt      = 0;
+let _lastWsMsgMs  = 0;
+let _dbRaf        = null;
+
+function _debugToggle() {
+  _debugOn = !_debugOn;
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  if (_debugOn) { el.classList.add('visible'); _debugLoop(); }
+  else          { el.classList.remove('visible'); if (_dbRaf) cancelAnimationFrame(_dbRaf); }
+}
+
+function _debugLoop() {
+  if (!_debugOn) return;
+  _debugRender();
+  _dbRaf = requestAnimationFrame(() => setTimeout(_debugLoop, 500));
+}
+
+function _debugRender() {
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  const ws     = leaderWs;
+  const wsState = ['CONNECTING','OPEN','CLOSING','CLOSED'];
+  const wsOk   = ws && ws.readyState === 1;
+  const wsSince = _lastWsMsgMs ? Math.round((Date.now() - _lastWsMsgMs) / 100) / 10 + 's ago' : 'never';
+  const acTime  = _metroAc ? _metroAc.currentTime.toFixed(3) : 'n/a';
+  const wallSec = Date.now() / 1000;
+  const acDrift = (_metroAc && parseFloat(acTime) > 0)
+    ? ((parseFloat(acTime) - wallSec - clockOffset/1000).toFixed(3) + 's') : 'n/a';
+  const epochAge = _serverEpochMs
+    ? (((Date.now() - (_serverEpochMs - clockOffset)) / 1000).toFixed(1) + 's') : 'n/a';
+  const musCount = document.getElementById('musician-count')?.textContent || 'n/a';
+
+  const c = (v, okVal, warnVal) => {
+    if (v === okVal || v === 'true') return `<span class="db-ok">${v}</span>`;
+    if (v === warnVal || v === 'n/a') return `<span class="db-warn">${v}</span>`;
+    return `<span class="db-err">${v}</span>`;
+  };
+
+  el.innerHTML = [
+    `<div class="db-head">DEBUG — LEADER</div>`,
+    `<div>WS: ${c(wsOk ? 'OPEN' : (ws ? wsState[ws.readyState]||'?' : 'null'), 'OPEN', 'CONNECTING')}</div>`,
+    `<div>Last msg: ${wsSince}</div>`,
+    `<div>Clock offset: ${clockOffset.toFixed(1)}ms</div>`,
+    `<div>Last RTT: ${_lastRtt ? _lastRtt + 'ms' : 'n/a'}</div>`,
+    `<div>Sync done: ${c(String(_syncDone), 'true', 'n/a')}</div>`,
+    `<div>Metro on: ${c(String(metroOn),'true','n/a')} | ${metroBpm} BPM | ${metroBar}/bar</div>`,
+    `<div>Beat: ${_lastBeat} | Warmup: ${_metroWarmup}</div>`,
+    `<div>Epoch age: ${epochAge}</div>`,
+    `<div>AC time: ${acTime}</div>`,
+    `<div>AC drift: ${acDrift}</div>`,
+    `<div>Musicians: ${musCount}</div>`,
+  ].join('');
+}
+
+if (_debugOn) document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('debug-overlay');
+  if (el) { el.classList.add('visible'); _debugLoop(); }
+});
+
 // ── Clock sync (NTP-style over WebSocket) ─────────────────────
 let clockOffset  = 0;   // localTime + clockOffset = serverTime
 let syncSamples  = [];
+let _syncDone    = false; // true after first 16-sample sync completes
+let _everSynced  = false; // never reset — gates full-jump on first sync ever
 
 function syncClock() {
   if (!leaderWs || leaderWs.readyState !== 1) return;
@@ -2766,6 +2896,7 @@ function syncClock() {
 function handleSyncReply(msg) {
   const t1      = Date.now();
   const rtt     = t1 - msg.t0;
+  _lastRtt = rtt;
   const offset  = msg.server - (msg.t0 + rtt / 2);
   syncSamples.push({ rtt, offset });
   if (syncSamples.length < 16) {
@@ -2779,9 +2910,25 @@ function handleSyncReply(msg) {
     // First sync: apply full offset immediately for fast convergence.
     // Subsequent syncs: clamp to 20ms per cycle to avoid mid-show phase jumps.
     const delta = newOffset - clockOffset;
-    const _firstSync = (clockOffset === 0);
-    clockOffset = clockOffset + (_firstSync ? delta : Math.max(-20, Math.min(20, delta)));
+    const _wasFirstSync = !_everSynced;
+    clockOffset = clockOffset + (_wasFirstSync ? delta : Math.max(-20, Math.min(20, delta)));
+    _syncDone = true;
+    _everSynced = true;
     syncSamples = [];
+    // If metro started before first sync, recompute the epoch with the now-accurate offset
+    if (_wasFirstSync && metroOn) {
+      const corrected = Date.now() + clockOffset;
+      _serverEpochMs = corrected;
+      // Broadcast corrected epoch to musicians/monitor
+      if (leaderWs && leaderWs.readyState === 1) {
+        leaderWs.send(JSON.stringify({
+          type: 'metronome_start',
+          bpm: metroBpm,
+          beats_per_bar: metroBar,
+          server_epoch: corrected
+        }));
+      }
+    }
     console.log(`[CMDR] Clock synced. offset=${clockOffset.toFixed(1)}ms`);
   }
 }
@@ -2805,8 +2952,8 @@ let _metroAc        = null;
 let _metroST        = null;
 let _lastBeat       = -1;
 let _serverEpochMs  = 0;
-const _LOOKAHEAD    = 0.120;
-const _INTERVAL     = 20;
+const _LOOKAHEAD    = 0.200;
+const _SCHEDULE_MS  = 25;
 
 function _getAc() {
   if (!_metroAc) {
@@ -2827,8 +2974,11 @@ function _audioEpochNow(ac) {
 function _metroScheduler() {
   if (!metroOn) return;
   const ac = _getAc();
-  // If context exists but hasn't started yet (currentTime still 0), use fallback
-  if (!ac || ac.currentTime < 0.001) { _metroFallback(); return; }
+  if (!ac || ac.currentTime < 0.001) {
+    _metroFallback();
+    _metroST = setTimeout(_metroScheduler, _SCHEDULE_MS);
+    return;
+  }
   const beatSec    = 60 / metroBpm;
   const nowAudio   = ac.currentTime;
   const audioEpoch = _audioEpochNow(ac);
@@ -2845,6 +2995,9 @@ function _metroScheduler() {
     }
     beat++;
   }
+  const nextBeatTime = audioEpoch + (Math.floor((nowAudio - audioEpoch) / beatSec) + 1) * beatSec;
+  const msUntilNextBeat = Math.max(1, (nextBeatTime - nowAudio - _LOOKAHEAD * 0.5) * 1000);
+  _metroST = setTimeout(_metroScheduler, Math.min(_SCHEDULE_MS, msUntilNextBeat));
 }
 
 function _metroFallback() {
@@ -2865,15 +3018,14 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
   metroOn        = true;
   _lastBeat      = -1;
   _getAc();
-  _metroST = setInterval(_metroScheduler, _INTERVAL);
-  _metroScheduler();
+  _metroScheduler(); // first tick immediately; subsequent ticks self-schedule
 }
 
 let _metroWarmup = false;
 
 function _stopMetroEngine() {
   metroOn = false;
-  clearInterval(_metroST);
+  clearTimeout(_metroST);
   _metroST  = null;
   _lastBeat = -1;
   const f  = document.getElementById('metro-flash');
@@ -3136,9 +3288,79 @@ async function removeBandMember(id) {
   await loadBandMembers();
 }
 
+
+// ── Standby logo ───────────────────────────────────────────────
+async function loadStandbyLogoPreview() {
+  try {
+    const r = await api.get('/api/standby-logo');
+    const preview = document.getElementById('standby-logo-preview');
+    const removeBtn = document.getElementById('standby-logo-remove-btn');
+    if (r.filename) {
+      preview.src = '/static/img/' + r.filename + '?v=' + Date.now();
+      preview.style.display = 'block';
+      removeBtn.style.display = '';
+    } else {
+      preview.style.display = 'none';
+      removeBtn.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+async function uploadStandbyLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('standby-logo-status');
+  status.textContent = 'Uploading…';
+  status.style.color = 'var(--dim)';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch('/api/standby-logo', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + _token },
+      body: fd,
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || resp.statusText);
+    }
+    status.textContent = 'Logo uploaded.';
+    status.style.color = 'var(--green)';
+    await loadStandbyLogoPreview();
+    // Broadcast to all clients to reload their standby logo
+    broadcastStandbyLogo();
+  } catch(e) {
+    status.textContent = 'Upload failed: ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+  input.value = '';
+}
+
+async function removeStandbyLogo() {
+  const status = document.getElementById('standby-logo-status');
+  try {
+    await api.delete('/api/standby-logo');
+    status.textContent = 'Logo removed.';
+    status.style.color = 'var(--dim)';
+    await loadStandbyLogoPreview();
+    broadcastStandbyLogo();
+  } catch(e) {
+    status.textContent = 'Remove failed.';
+    status.style.color = 'var(--red)';
+  }
+}
+
+function broadcastStandbyLogo() {
+  // Tell all connected clients to refresh standby logo via WS
+  if (leaderWs && leaderWs.readyState === 1) {
+    leaderWs.send(JSON.stringify({ type: 'standby_logo_update' }));
+  }
+}
+
 // ── Settings modal ────────────────────────────────────────────
 function openSettingsModal() {
   document.getElementById('settings-overlay').style.display = 'flex';
+  loadStandbyLogoPreview();
   document.getElementById('new-pin-input').value = '';
   document.getElementById('pin-change-msg').style.display = 'none';
   // Populate pedal key fields from saved settings
@@ -3771,5 +3993,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<div id="debug-overlay"></div>
 </body>
 </html>
