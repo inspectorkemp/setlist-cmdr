@@ -1145,6 +1145,8 @@ async def ws_endpoint(websocket: WebSocket):
                             "type": "transpose_update",
                             "xp":   msg.get("xp", 0),
                         })
+                    elif msg.get("type") == "standby_logo_update":
+                        await manager.broadcast({"type": "standby_logo_update"})
                     elif msg.get("type") == "monitor_config":
                         monitor_config.update({
                             "mode":      msg.get("mode",      monitor_config["mode"]),
@@ -1247,6 +1249,61 @@ async def send_signal(sig: SignalIn):
         raise HTTPException(400, "Signal text cannot be empty")
     await manager.broadcast({"type": "signal", "text": sig.text.strip()})
     return {"ok": True}
+
+
+@app.get("/api/standby-logo")
+def get_standby_logo():
+    """Return the current custom standby logo filename, or null if none set."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value FROM app_state WHERE key='standby_logo'"
+        ).fetchone()
+    if row and os.path.exists(os.path.join("static/img", row[0])):
+        return {"filename": row[0]}
+    return {"filename": None}
+
+@app.post("/api/standby-logo", dependencies=[Depends(require_auth)])
+async def upload_standby_logo(file: UploadFile = File(...)):
+    """Upload a custom standby logo. Saves to static/img/standby-logo.<ext>."""
+    name = file.filename or ""
+    ext  = os.path.splitext(name)[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+        raise HTTPException(400, "Unsupported image type. Use PNG, JPG, GIF, WebP, or SVG.")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Image too large. Maximum size is 5 MB.")
+    # Remove any previous custom logo
+    _clear_standby_logo_file()
+    fname = f"standby-logo{ext}"
+    dest  = os.path.join("static/img", fname)
+    with open(dest, "wb") as f:
+        f.write(data)
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_state (key, value) VALUES ('standby_logo', ?)",
+            (fname,)
+        )
+        conn.commit()
+    return {"filename": fname}
+
+@app.delete("/api/standby-logo", dependencies=[Depends(require_auth)])
+def delete_standby_logo():
+    """Remove the custom standby logo and revert to default."""
+    _clear_standby_logo_file()
+    with get_db() as conn:
+        conn.execute("DELETE FROM app_state WHERE key='standby_logo'")
+        conn.commit()
+    return {"ok": True}
+
+def _clear_standby_logo_file():
+    """Delete any existing standby-logo.* file from disk."""
+    img_dir = "static/img"
+    for fname in os.listdir(img_dir):
+        if fname.startswith("standby-logo."):
+            try:
+                os.remove(os.path.join(img_dir, fname))
+            except OSError:
+                pass
 
 @app.get("/api/db/download")
 def download_db():
