@@ -461,6 +461,38 @@ body.hi-contrast #song-content { color:#ffffff; }
   white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis;
 }
 </style>
+
+<style id="debug-css">
+#debug-overlay {
+  display: none;
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 9999;
+  background: rgba(0,0,0,.85);
+  border: 1px solid rgba(245,158,11,.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: .72rem;
+  line-height: 1.7;
+  color: #e8e8f0;
+  min-width: 220px;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+#debug-overlay.visible { display: block; }
+#debug-overlay .db-head {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: .9rem;
+  letter-spacing: 2px;
+  color: #f59e0b;
+  margin-bottom: 4px;
+}
+#debug-overlay .db-ok  { color: #4ade80; }
+#debug-overlay .db-warn { color: #f59e0b; }
+#debug-overlay .db-err  { color: #f87171; }
+</style>
 </head>
 <body>
 <div id="sw-update-banner">
@@ -470,7 +502,7 @@ body.hi-contrast #song-content { color:#ffffff; }
 
 <!-- ── Name screen ─────────────────────────────────────────── -->
 <div id="name-screen">
-  <img src="/static/img/logo_large.png" alt="Setlist CMDR"
+  <img src="/static/img/logo_large.png" alt="Setlist CMDR" class="standby-logo-img"
        style="width:clamp(180px,50vw,320px);height:auto;margin-bottom:8px;">
   <p>Select your name or type it below</p>
   <div id="member-btns" style="display:flex;flex-wrap:wrap;gap:10px;
@@ -501,7 +533,7 @@ body.hi-contrast #song-content { color:#ffffff; }
 <div id="app">
 
   <div id="hdr">
-    <div class="dot" id="dot"></div>
+    <div class="dot" id="dot" onclick="_dotTripleTap()" style="cursor:pointer;"></div>
     <div id="sl-name">Waiting for band leader…</div>
     <div id="pos-badge"></div>
     <button onclick="openMusicianSettings()"
@@ -524,7 +556,7 @@ body.hi-contrast #song-content { color:#ffffff; }
     <div id="waiting">
       <img class="wait-corner wait-tl" src="/static/img/logo_top_right.png"    alt="">
       <img class="wait-corner wait-br" src="/static/img/logo_bottom_left.png"  alt="">
-      <img src="/static/img/logo_large.png" alt="Setlist CMDR"
+      <img src="/static/img/logo_large.png" alt="Setlist CMDR" class="standby-logo-img"
            style="width:clamp(160px,45vw,300px);height:auto;opacity:.55;">
       <h2>STANDBY</h2>
       <p>Waiting for the band leader to go live…</p>
@@ -597,9 +629,22 @@ let ws    = null;
 let scrollTick = null;
 let scrolling  = false;
 
+
+// ── Standby logo ───────────────────────────────────────────────
+async function applyStandbyLogo() {
+  try {
+    const r = await fetch('/api/standby-logo').then(x => x.json());
+    const url = r.filename ? '/static/img/' + r.filename + '?v=' + Date.now() : null;
+    document.querySelectorAll('.standby-logo-img').forEach(img => {
+      img.src = url || '/static/img/logo_large.png';
+    });
+  } catch(e) {}
+}
+
 // ── Boot ──────────────────────────────────────────────────────
 // Load band member buttons immediately
 loadMemberButtons();
+applyStandbyLogo();
 
 if (name) {
   document.getElementById('name-input').value = name;
@@ -640,6 +685,7 @@ function selectMember(btn) {
 
 function boot() {
   document.getElementById('name-screen').style.display = 'none';
+  applyStandbyLogo();
   document.getElementById('app').style.display = 'flex';
   applyMode();
   connect();
@@ -659,10 +705,11 @@ function connect() {
     setDot('on');
     if (name) ws.send(`name:${name}`);
     // Start clock sync immediately on connect
-    syncSamples = [];
+    syncSamples = []; _syncDone = false;
     syncClock();
   };
   ws.onmessage = e => {
+    _lastWsMsgMs = Date.now();
     const msg = JSON.parse(e.data);
     if (msg.type === 'live_update')     applyLive(msg);
     if (msg.type === 'signal')          showSignal(msg.text);
@@ -682,6 +729,7 @@ function connect() {
       metroTimeout = setTimeout(stopMetro, secs * 1000);
     }
     if (msg.type === 'metronome_stop')  stopMetro();
+    if (msg.type === 'standby_logo_update') applyStandbyLogo();
   };
   ws.onclose = () => { setDot('warn'); musicianWs = null; setTimeout(connect, 3000); };
   ws.onerror = () => ws.close();
@@ -690,6 +738,14 @@ function connect() {
 setInterval(() => { if (ws && ws.readyState === 1) ws.send('ping'); }, 25000);
 
 let _dotWarnTimer = null;
+
+let _dotTaps = 0, _dotTapTimer = null;
+function _dotTripleTap() {
+  _dotTaps++;
+  clearTimeout(_dotTapTimer);
+  _dotTapTimer = setTimeout(() => { _dotTaps = 0; }, 600);
+  if (_dotTaps >= 3) { _dotTaps = 0; _debugToggle(); }
+}
 
 function setDot(s) {
   const d = document.getElementById('dot');
@@ -710,11 +766,14 @@ function setDot(s) {
 }
 
 // ── Fallback polling ──────────────────────────────────────────
+// Only fires if WS is disconnected — avoids interrupting live display
 async function fallbackPoll() {
   try {
-    const r  = await fetch('/api/live');
-    const st = await r.json();
-    applyLive(st);
+    if (!musicianWs || musicianWs.readyState !== 1) {
+      const r  = await fetch('/api/live');
+      const st = await r.json();
+      applyLive(st);
+    }
   } catch {}
   setTimeout(fallbackPoll, 12000);
 }
@@ -1335,6 +1394,8 @@ function stopScroll() {
 // ── Clock sync (NTP-style over WebSocket) ─────────────────────
 let clockOffset  = 0;
 let syncSamples  = [];
+let _syncDone    = false;
+let _everSynced  = false; // never reset — gates full-jump on first sync ever
 let _pendingMetro = null; // metro msg received before sync complete
 let musicianWs   = null;  // set by connect()
 
@@ -1347,6 +1408,7 @@ function syncClock() {
 function handleSyncReply(msg) {
   const t1     = Date.now();
   const rtt    = t1 - msg.t0;
+  _lastRtt = rtt;
   const offset = msg.server - (msg.t0 + rtt / 2);
   syncSamples.push({ rtt, offset });
   if (syncSamples.length < 16) {
@@ -1361,8 +1423,9 @@ function handleSyncReply(msg) {
     // First sync: apply full offset immediately for fast convergence.
     // Subsequent syncs: clamp to 20ms per cycle to avoid mid-show phase jumps.
     const delta = newOffset - clockOffset;
-    const _firstSync = (clockOffset === 0);
-    clockOffset = clockOffset + (_firstSync ? delta : Math.max(-20, Math.min(20, delta)));
+    clockOffset = clockOffset + (!_everSynced ? delta : Math.max(-20, Math.min(20, delta)));
+    _syncDone = true;
+    _everSynced = true;
     syncSamples = [];
     // Fire any metro start that arrived before sync was ready
     if (_pendingMetro) {
@@ -1383,6 +1446,76 @@ function serverNow() { return Date.now() + clockOffset; }
 // Re-sync every 30 seconds (was 45)
 setInterval(() => { syncSamples = []; syncClock(); }, 30000);
 
+
+// ── Debug overlay ──────────────────────────────────────────────
+let _debugOn      = location.search.includes('debug=1');
+let _lastRtt      = 0;
+let _lastWsMsgMs  = 0;
+let _dbRaf        = null;
+
+function _debugToggle() {
+  _debugOn = !_debugOn;
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  if (_debugOn) { el.classList.add('visible'); _debugLoop(); }
+  else          { el.classList.remove('visible'); if (_dbRaf) cancelAnimationFrame(_dbRaf); }
+}
+
+function _debugLoop() {
+  if (!_debugOn) return;
+  _debugRender();
+  _dbRaf = requestAnimationFrame(() => setTimeout(_debugLoop, 500));
+}
+
+function _debugRender() {
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  const ws    = typeof musicianWs !== 'undefined' ? musicianWs : null;
+  const wsState = ['CONNECTING','OPEN','CLOSING','CLOSED'];
+  const wsOk  = ws && ws.readyState === 1;
+  const wsSince = _lastWsMsgMs ? Math.round((Date.now() - _lastWsMsgMs) / 100) / 10 + 's ago' : 'never';
+  const acTime = (typeof _metroAc !== 'undefined' && _metroAc) ? _metroAc.currentTime.toFixed(3) : 'n/a';
+  const wallSec = Date.now() / 1000;
+  const acDrift = (typeof _metroAc !== 'undefined' && _metroAc)
+    ? ((parseFloat(acTime) - (wallSec + (typeof clockOffset !== 'undefined' ? clockOffset/1000 : 0))).toFixed(3) + 's')
+    : 'n/a';
+  const epochAge = (typeof _serverEpochMs !== 'undefined' && _serverEpochMs)
+    ? (((Date.now() - (_serverEpochMs - (typeof clockOffset !== 'undefined' ? clockOffset : 0))) / 1000).toFixed(1) + 's')
+    : 'n/a';
+  const beat = typeof _lastBeat !== 'undefined' ? _lastBeat : 'n/a';
+  const bar  = typeof metroBar  !== 'undefined' ? metroBar  : 'n/a';
+  const bpm  = typeof metroBpm  !== 'undefined' ? metroBpm  : 'n/a';
+  const offset = typeof clockOffset !== 'undefined' ? clockOffset.toFixed(1) + 'ms' : 'n/a';
+  const synced = typeof _syncDone   !== 'undefined' ? _syncDone : 'n/a';
+  const warm   = typeof _metroWarmup !== 'undefined' ? _metroWarmup : 'n/a';
+  const pending = typeof _pendingMetro !== 'undefined' && _pendingMetro ? 'YES' : 'no';
+
+  const c = (val, ok, warn) => {
+    if (val === ok || val === true) return `<span class="db-ok">${val}</span>`;
+    if (val === warn) return `<span class="db-warn">${val}</span>`;
+    return `<span class="db-err">${val}</span>`;
+  };
+
+  el.innerHTML = `
+<div class="db-head">DEBUG — MUSICIAN</div>
+<div>WS: ${c(wsOk ? 'OPEN' : (ws ? wsState[ws.readyState] : 'null'), 'OPEN', 'CONNECTING')}</div>
+<div>Last msg: ${wsSince}</div>
+<div>Clock offset: ${offset}</div>
+<div>Last RTT: ${_lastRtt ? _lastRtt + 'ms' : 'n/a'}</div>
+<div>Sync done: ${c(String(synced), 'true', 'n/a')}</div>
+<div>Metro: ${c(String(typeof metroOn !== 'undefined' ? metroOn : 'n/a'), 'true', 'n/a')} ${bpm}bpm ${bar}/bar</div>
+<div>Beat: ${beat} | Warmup: ${warm} | Pending: ${pending}</div>
+<div>Epoch age: ${epochAge}</div>
+<div>AC time: ${acTime}</div>
+<div>AC drift: ${acDrift}</div>
+
+  `.trim();
+}
+
+if (_debugOn) { document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('debug-overlay');
+  if (el) { el.classList.add('visible'); _debugLoop(); }
+});}
 // ── Metronome (continuous audio/wall-clock bridge recalibration) ─────────
 // _audioEpoch is recomputed fresh on every scheduler tick from the current
 // clockOffset rather than being fixed at start time. This corrects for both
@@ -1395,8 +1528,8 @@ let _metroAc        = null;
 let _metroST        = null;
 let _lastBeat       = -1;
 let _serverEpochMs  = 0;
-const _LOOKAHEAD    = 0.120;   // seconds ahead to schedule
-const _INTERVAL     = 20;      // scheduler poll ms
+const _LOOKAHEAD    = 0.200;   // seconds ahead to schedule (larger = more robust to throttling)
+const _SCHEDULE_MS  = 25;      // target scheduler interval in ms
 
 function _getAc() {
   if (!_metroAc) {
@@ -1420,8 +1553,11 @@ function _audioEpochNow(ac) {
 function _metroScheduler() {
   if (!metroOn) return;
   const ac = _getAc();
-  // If context exists but hasn't started yet (currentTime still 0), use fallback
-  if (!ac || ac.currentTime < 0.001) { _metroFallback(); return; }
+  if (!ac || ac.currentTime < 0.001) {
+    _metroFallback();
+    _metroST = setTimeout(_metroScheduler, _SCHEDULE_MS);
+    return;
+  }
   const beatSec    = 60 / metroBpm;
   const nowAudio   = ac.currentTime;
   const audioEpoch = _audioEpochNow(ac);
@@ -1438,6 +1574,13 @@ function _metroScheduler() {
     }
     beat++;
   }
+  // Self-reschedule anchored to audio clock rather than wall clock.
+  // Calculate how long until the lookahead window needs refilling,
+  // then schedule the next tick just before that — typically ~25ms.
+  const nextBeatTime = audioEpoch + (Math.floor((nowAudio - audioEpoch) / beatSec) + 1) * beatSec;
+  const msUntilNextBeat = Math.max(1, (nextBeatTime - nowAudio - _LOOKAHEAD * 0.5) * 1000);
+  const nextTick = Math.min(_SCHEDULE_MS, msUntilNextBeat);
+  _metroST = setTimeout(_metroScheduler, nextTick);
 }
 
 function _metroFallback() {
@@ -1458,13 +1601,12 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
   metroOn        = true;
   _lastBeat      = -1;
   _getAc();  // prime the context before first beat
-  _metroST = setInterval(_metroScheduler, _INTERVAL);
-  _metroScheduler();
+  _metroScheduler(); // first tick immediately; subsequent ticks self-schedule
 }
 
 function _stopMetroEngine() {
   metroOn = false;
-  clearInterval(_metroST);
+  clearTimeout(_metroST);
   _metroST  = null;
   _lastBeat = -1;
   const f  = document.getElementById('metro-flash');
@@ -1911,5 +2053,6 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<div id="debug-overlay"></div>
 </body>
 </html>
