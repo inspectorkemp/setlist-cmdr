@@ -26,6 +26,7 @@ html, body {
 
 /* ── Status bar ──────────────────────────────────────────────── */
 #status-bar {
+  cursor: pointer;
   position:absolute; top:0; left:0; right:0; height:6px;
   background:var(--border); z-index:100; flex-shrink:0;
 }
@@ -376,24 +377,53 @@ body.rotated.fit #content {
   to   { opacity:1.0; transform:scale(1.03); }
 }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style id="debug-css">
+#debug-overlay {
+  display: none;
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 9999;
+  background: rgba(0,0,0,.85);
+  border: 1px solid rgba(245,158,11,.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: .72rem;
+  line-height: 1.7;
+  color: #e8e8f0;
+  min-width: 220px;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+#debug-overlay.visible { display: block; }
+#debug-overlay .db-head {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: .9rem;
+  letter-spacing: 2px;
+  color: #f59e0b;
+  margin-bottom: 4px;
+}
+#debug-overlay .db-ok   { color: #4ade80; }
+#debug-overlay .db-warn { color: #f59e0b; }
+#debug-overlay .db-err  { color: #f87171; }
+</style>
 </head>
 <body>
 <div id="rotate-wrap">
 
-<div id="status-bar"><div class="fill standby" id="status-fill"></div></div>
+<div id="status-bar" onclick="_monStatusTap()"><div class="fill standby" id="status-fill"></div></div>
 
 <!-- Standby screen -->
 <div id="standby">
-  <img src="/static/img/logo_large.png" alt="Setlist CMDR">
+  <img src="/static/img/logo_large.png" alt="Setlist CMDR" class="standby-logo-img">
   <div class="label">STANDBY</div>
-  <div id="qr-wrap" style="margin-top:clamp(24px,3vh,48px);display:flex;
-       flex-direction:column;align-items:center;gap:12px;">
-    <canvas id="qr-canvas"></canvas>
-    <div style="font-family:'DM Mono',monospace;font-size:clamp(.7rem,1.4vw,1rem);
-         color:var(--dim);letter-spacing:1px;">SCAN TO CONFIGURE MONITOR</div>
-    <div id="qr-url" style="font-family:'DM Mono',monospace;
-         font-size:clamp(.6rem,1.1vw,.85rem);color:var(--dim);opacity:.6;"></div>
+  <div style="margin-top:clamp(20px,3vh,40px);text-align:center;">
+    <div style="font-family:'DM Mono',monospace;font-size:clamp(.65rem,1.2vw,.9rem);
+         color:var(--dim);letter-spacing:1px;">CONFIGURE AT</div>
+    <div id="setup-url" style="font-family:'DM Mono',monospace;
+         font-size:clamp(.7rem,1.4vw,1rem);color:var(--amber);margin-top:6px;opacity:.8;"></div>
   </div>
 </div>
 
@@ -506,8 +536,90 @@ let monitorXp    = 0;  // current transpose from leader
 let monitorUseCapo = localStorage.getItem('mon_usecapo') !== 'false';
 
 // ── Clock sync (NTP-style) ────────────────────────────────────
+
+// ── Debug overlay ──────────────────────────────────────────────
+let _debugOn      = location.search.includes('debug=1');
+let _lastRtt      = 0;
+let _lastWsMsgMs  = 0;
+let _dbRaf        = null;
+
+let _monTaps = 0, _monTapTimer = null;
+function _monStatusTap() {
+  _monTaps++;
+  clearTimeout(_monTapTimer);
+  _monTapTimer = setTimeout(() => { _monTaps = 0; }, 600);
+  if (_monTaps >= 3) { _monTaps = 0; _debugToggle(); }
+}
+
+function _debugToggle() {
+  _debugOn = !_debugOn;
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  if (_debugOn) { el.classList.add('visible'); _debugLoop(); }
+  else          { el.classList.remove('visible'); if (_dbRaf) cancelAnimationFrame(_dbRaf); }
+}
+
+function _debugLoop() {
+  if (!_debugOn) return;
+  _debugRender();
+  _dbRaf = requestAnimationFrame(() => setTimeout(_debugLoop, 500));
+}
+
+function _debugRender() {
+  const el = document.getElementById('debug-overlay');
+  if (!el) return;
+  // ws is module-level in monitor
+  const wsState = ['CONNECTING','OPEN','CLOSING','CLOSED'];
+  const _ws   = (typeof ws !== 'undefined') ? ws : null;
+  const wsOk  = _ws && _ws.readyState === 1;
+  const wsSince = _lastWsMsgMs ? Math.round((Date.now() - _lastWsMsgMs) / 100) / 10 + 's ago' : 'never';
+  const acTime = (typeof _metroAc !== 'undefined' && _metroAc) ? _metroAc.currentTime.toFixed(3) : 'n/a';
+  const wallSec = Date.now() / 1000;
+  const acDrift = (typeof _metroAc !== 'undefined' && _metroAc && parseFloat(acTime) > 0)
+    ? ((parseFloat(acTime) - wallSec - (typeof clockOffset !== 'undefined' ? clockOffset/1000 : 0)).toFixed(3) + 's')
+    : 'n/a';
+  const epochAge = (typeof _serverEpochMs !== 'undefined' && _serverEpochMs)
+    ? (((Date.now() - (_serverEpochMs - (typeof clockOffset !== 'undefined' ? clockOffset : 0))) / 1000).toFixed(1) + 's')
+    : 'n/a';
+  const beat    = typeof _lastBeat    !== 'undefined' ? _lastBeat    : 'n/a';
+  const bar     = typeof metroBar     !== 'undefined' ? metroBar     : 'n/a';
+  const bpm     = typeof metroBpm     !== 'undefined' ? metroBpm     : 'n/a';
+  const offset  = typeof clockOffset  !== 'undefined' ? clockOffset.toFixed(1) + 'ms' : 'n/a';
+  const synced  = typeof _syncDone    !== 'undefined' ? String(_syncDone)  : 'n/a';
+  const warm    = typeof _metroWarmup !== 'undefined' ? String(_metroWarmup) : 'n/a';
+  const pending = typeof _pendingMetro !== 'undefined' && _pendingMetro ? 'YES' : 'no';
+  const mOn     = typeof metroOn !== 'undefined' ? String(metroOn) : 'n/a';
+
+  const c = (v, okVal, warnVal) => {
+    if (v === okVal || v === 'true') return `<span class="db-ok">${v}</span>`;
+    if (v === warnVal || v === 'n/a') return `<span class="db-warn">${v}</span>`;
+    return `<span class="db-err">${v}</span>`;
+  };
+
+  el.innerHTML = [
+    `<div class="db-head">DEBUG — MONITOR</div>`,
+    `<div>WS: ${c(wsOk ? 'OPEN' : (_ws ? wsState[_ws.readyState]||'?' : 'null'), 'OPEN', 'CONNECTING')}</div>`,
+    `<div>Last msg: ${wsSince}</div>`,
+    `<div>Clock offset: ${offset}</div>`,
+    `<div>Last RTT: ${_lastRtt ? _lastRtt + 'ms' : 'n/a'}</div>`,
+    `<div>Sync done: ${c(synced, 'true', 'n/a')}</div>`,
+    `<div>Metro on: ${c(mOn,'true','n/a')} | ${bpm} BPM | ${bar}/bar</div>`,
+    `<div>Beat: ${beat} | Warmup: ${warm} | Pending: ${pending}</div>`,
+    `<div>Epoch age: ${epochAge}</div>`,
+    `<div>AC time: ${acTime}</div>`,
+    `<div>AC drift: ${acDrift}</div>`,
+    `<div>View mode: ${ typeof viewMode !== "undefined" ? viewMode : "n/a"}</div>`,
+  ].join('');
+}
+
+if (_debugOn) document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('debug-overlay');
+  if (el) { el.classList.add('visible'); _debugLoop(); }
+});
 let clockOffset  = 0;
 let syncSamples  = [];
+let _syncDone    = false;
+let _everSynced  = false; // never reset — gates full-jump on first sync ever
 let _pendingMetro = null;
 
 function syncClock() {
@@ -518,6 +630,7 @@ function syncClock() {
 function handleSyncReply(msg) {
   const t1     = Date.now();
   const rtt    = t1 - msg.t0;
+  _lastRtt = rtt;
   const offset = msg.server - (msg.t0 + rtt / 2);
   syncSamples.push({ rtt, offset });
   if (syncSamples.length < 16) {
@@ -527,8 +640,9 @@ function handleSyncReply(msg) {
     const good      = syncSamples.slice(0, 8);
     const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
     const delta     = newOffset - clockOffset;
-    const _firstSync = (clockOffset === 0);
-    clockOffset     = clockOffset + (_firstSync ? delta : Math.max(-20, Math.min(20, delta)));
+    clockOffset     = clockOffset + (!_everSynced ? delta : Math.max(-20, Math.min(20, delta)));
+    _syncDone = true;
+    _everSynced = true;
     syncSamples     = [];
     if (_pendingMetro) {
       const m = _pendingMetro; _pendingMetro = null;
@@ -554,8 +668,8 @@ let _metroAc        = null;
 let _metroST        = null;
 let _lastBeat       = -1;
 let _serverEpochMs  = 0;
-const _LOOKAHEAD    = 0.120;   // seconds ahead to schedule
-const _INTERVAL     = 20;      // scheduler poll ms
+const _LOOKAHEAD    = 0.200;   // seconds ahead to schedule (larger = more robust to throttling)
+const _SCHEDULE_MS  = 25;      // target scheduler interval in ms
 
 function _getAc() {
   if (!_metroAc) {
@@ -579,8 +693,11 @@ function _audioEpochNow(ac) {
 function _metroScheduler() {
   if (!metroOn) return;
   const ac = _getAc();
-  // If context exists but hasn't started yet (currentTime still 0), use fallback
-  if (!ac || ac.currentTime < 0.001) { _metroFallback(); return; }
+  if (!ac || ac.currentTime < 0.001) {
+    _metroFallback();
+    _metroST = setTimeout(_metroScheduler, _SCHEDULE_MS);
+    return;
+  }
   const beatSec    = 60 / metroBpm;
   const nowAudio   = ac.currentTime;
   const audioEpoch = _audioEpochNow(ac);
@@ -597,6 +714,13 @@ function _metroScheduler() {
     }
     beat++;
   }
+  // Self-reschedule anchored to audio clock rather than wall clock.
+  // Calculate how long until the lookahead window needs refilling,
+  // then schedule the next tick just before that — typically ~25ms.
+  const nextBeatTime = audioEpoch + (Math.floor((nowAudio - audioEpoch) / beatSec) + 1) * beatSec;
+  const msUntilNextBeat = Math.max(1, (nextBeatTime - nowAudio - _LOOKAHEAD * 0.5) * 1000);
+  const nextTick = Math.min(_SCHEDULE_MS, msUntilNextBeat);
+  _metroST = setTimeout(_metroScheduler, nextTick);
 }
 
 function _metroFallback() {
@@ -617,13 +741,12 @@ function _startMetroEngine(bpm, bar, serverEpochMs) {
   metroOn        = true;
   _lastBeat      = -1;
   _getAc();  // prime the context before first beat
-  _metroST = setInterval(_metroScheduler, _INTERVAL);
-  _metroScheduler();
+  _metroScheduler(); // first tick immediately; subsequent ticks self-schedule
 }
 
 function _stopMetroEngine() {
   metroOn = false;
-  clearInterval(_metroST);
+  clearTimeout(_metroST);
   _metroST  = null;
   _lastBeat = -1;
   const f  = document.getElementById('metro-flash');
@@ -1019,29 +1142,6 @@ function applyMonitorConfig(msg) {
   if (song) renderSong();
 }
 
-// ── QR code for setup page ────────────────────────────────────
-function initQR() {
-  const setupUrl = location.origin + '/monitor/setup';
-  document.getElementById('qr-url').textContent = setupUrl;
-  const canvas = document.getElementById('qr-canvas');
-  const size = Math.min(Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.18), 220);
-  canvas.width = size;
-  canvas.height = size;
-  try {
-    new QRCode(canvas, {
-      text:          setupUrl,
-      width:         size,
-      height:        size,
-      colorDark:     '#e8e8f0',
-      colorLight:    '#0d0d12',
-      correctLevel:  QRCode.CorrectLevel.M,
-    });
-  } catch (e) {
-    // QRCode lib not yet loaded — try once more after a tick
-    setTimeout(initQR, 500);
-  }
-}
-
 // Load saved config on startup
 (function loadSavedMonitorCfg() {
   try {
@@ -1054,8 +1154,9 @@ function initQR() {
       mode: viewMode, cols: false, fit: false, hc: false, portrait: true, fontscale: 1.0
     }));
   }
-  // Generate QR after a brief delay to let QRCode lib load
-  setTimeout(initQR, 300);
+  // Show setup URL on standby screen
+  const _su = document.getElementById('setup-url');
+  if (_su) _su.textContent = location.origin + '/monitor/setup';
 })();
 
 // ── Consolidated view ─────────────────────────────────────────
@@ -1280,17 +1381,30 @@ async function applyLive(state) {
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
+
+// ── Standby logo ───────────────────────────────────────────────
+async function applyStandbyLogo() {
+  try {
+    const r = await fetch('/api/standby-logo').then(x => x.json());
+    const url = r.filename ? '/static/img/' + r.filename + '?v=' + Date.now() : null;
+    document.querySelectorAll('.standby-logo-img').forEach(img => {
+      img.src = url || '/static/img/logo_large.png';
+    });
+  } catch(e) {}
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws`);
 
   ws.onopen = () => {
-    syncSamples = [];
+    syncSamples = []; _syncDone = false;
     syncClock();
   };
 
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
+    _lastWsMsgMs = Date.now();
     if (msg.type === 'live_update')      applyLive(msg);
     if (msg.type === 'monitor_config')   applyMonitorConfig(msg);
     if (msg.type === 'sync_reply')       handleSyncReply(msg);
@@ -1314,6 +1428,7 @@ function connect() {
       }
     }
     if (msg.type === 'metronome_stop') stopMetro();
+    if (msg.type === 'standby_logo_update') applyStandbyLogo();
     if (msg.type === 'scroll_update')  applyScroll(msg.pct);
     if (msg.type === 'signal')         showSignal(msg.text);
     if (msg.type === 'transpose_update') {
@@ -1355,6 +1470,7 @@ function applyScroll(pct) {
 // ── Boot ──────────────────────────────────────────────────────
 (async function boot() {
   connect();
+  applyStandbyLogo();
   // Check current live/rehearsal state immediately
   try {
     const [liveRes, rehRes] = await Promise.all([
@@ -1378,5 +1494,6 @@ function applyScroll(pct) {
 })();
 </script>
 </div><!-- #rotate-wrap -->
+<div id="debug-overlay"></div>
 </body>
 </html>
