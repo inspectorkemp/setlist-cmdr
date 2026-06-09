@@ -31,7 +31,7 @@ Musicians open http://your-ip:8000/ on any device connected to the same network.
 Full control: song library, setlists, live navigation, rehearsal mode, signals, metronome, monitor settings. PIN protected.
 
 **Musicians** (http://your-ip:8000/)
-Stage view showing the current song. Each musician independently controls their view mode, font size, transpose, capo compensation, autoscroll, and line spacing. All preferences are saved per device.
+Stage view showing the current song. Each musician independently controls their view mode, font size, transpose, capo compensation, autoscroll speed, and line spacing. All preferences are saved per device. Transpose is remembered per song — a chart you always play a step down comes back transposed. The screen is kept awake while a song is showing, and a clear warning appears if the device loses contact with the leader mid-show. A section-jump button lets a player skip straight to the Bridge or Chorus.
 
 **Confidence monitor** (http://your-ip:8000/monitor)
 Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time. Scan the QR code on the standby screen to configure it from your phone.
@@ -46,7 +46,7 @@ Each song stores: title, artist, key, capo, time signature, tempo, duration, sta
 
 **Capo** is a first-class field. Chord displays show fingered shapes adjusted for the capo position. Each device has a CAPO toggle to turn this off for players who are not using one.
 
-**Time signature** options are 4/4, 3/4, and 6/8. The metronome uses the correct beats per bar for each song automatically.
+**Time signature** options are 4/4, 3/4, 2/4, 5/4, 6/8, and 12/8. The metronome uses the correct beats per bar for each song automatically.
 
 **ChordPro format** stores chord names inline with lyrics using square brackets. The song editor includes a fullscreen split editor with live preview, a chord insert toolbar, and a Convert tool that accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets.
 
@@ -243,6 +243,13 @@ Caches Bebas Neue, DM Mono, and DM Sans locally. After restarting, fonts load fr
 ## Progressive Web App
 
 The leader and musician pages can be installed to the home screen on iPad, iPhone, and Android. Tap the share button and choose Add to Home Screen. Launches full-screen with no browser chrome.
+
+**A note on offline caching.** The service worker (which precaches assets and provides an offline fallback) only runs in a *secure context* — that means `https://` or `http://localhost`. When you reach the Pi over the network at a plain `http://192.168.x.x:8000` address, browsers refuse to register the service worker, so:
+
+- The app still works normally — it just fetches from the Pi each time instead of from an offline cache. On a local network this is effectively instant, so in practice you will not notice.
+- iOS "Add to Home Screen" still works and still launches full-screen. Android Chrome's installable-PWA prompt will not appear over plain HTTP.
+
+If you want the full offline/installable behavior, serve the app over HTTPS (for example with a self-signed certificate or a local `.local` hostname plus a trusted cert). For the typical "everyone's on the venue WiFi with the Pi in the room" setup, plain HTTP is fine and the offline cache is not needed.
 
 ---
 
