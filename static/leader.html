@@ -25,7 +25,8 @@ if ('serviceWorker' in navigator) {
 #sw-update-banner {
   display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
   background:var(--amber); color:#000;
-  font-family:'DM Sans',sans-serif; font-size:.9rem; font-weight:700;
+  font-family:'Bebas Neue','DM Sans',sans-serif;
+  font-size:.9rem; letter-spacing:.06em; text-transform:uppercase;
   padding:12px 20px; text-align:center;
   box-shadow:0 -4px 20px rgba(0,0,0,.4);
 }
@@ -34,6 +35,22 @@ if ('serviceWorker' in navigator) {
   padding:6px 16px; margin-left:14px; font-weight:700; cursor:pointer;
   font-family:inherit; font-size:.85rem;
 }
+</style>
+
+<style id="leader-view-css">
+#l-song-content.spacing-tight .cp-chords,
+#l-song-content.spacing-tight .cp-chords-row { line-height:1.15; }
+#l-song-content.spacing-tight .cp-lyrics,
+#l-song-content.spacing-tight .cp-lyrics-row { line-height:1.2; }
+#l-song-content.spacing-tight               { line-height:1.2; }
+#l-song-content.spacing-loose .cp-chords,
+#l-song-content.spacing-loose .cp-chords-row { line-height:1.7; }
+#l-song-content.spacing-loose .cp-lyrics,
+#l-song-content.spacing-loose .cp-lyrics-row { line-height:1.9; }
+#l-song-content.spacing-loose               { line-height:1.9; }
+body.hi-contrast                            { --text:#ffffff; --dim:#aaaaaa; --amber:#ffcc00; --border:#333344; }
+body.hi-contrast #l-song-content .cp-chords,
+body.hi-contrast #l-song-content .cp-chords-row { color:#ffcc00; font-weight:700; }
 </style>
 
 <style id="debug-css">
@@ -194,7 +211,7 @@ if ('serviceWorker' in navigator) {
   <!-- ── SONGS PANEL ──────────────────────────────────────── -->
   <div class="panel active" id="songs-panel">
     <div class="toolbar">
-      <input class="search-input" id="song-search" placeholder="Search songs…" oninput="renderSongs()">
+      <input class="search-input" id="song-search" placeholder="Search title, artist, or lyrics…" oninput="renderSongs()">
       <select class="filter-select" id="song-filter" onchange="renderSongs()">
         <option value="">All statuses</option>
         <option value="active">Active</option>
@@ -317,10 +334,9 @@ if ('serviceWorker' in navigator) {
           style="background:var(--card);border:1px solid var(--border);border-radius:8px;
                  color:var(--dim);font-family:'DM Sans',sans-serif;font-size:.75rem;
                  padding:5px 8px;outline:none;cursor:pointer;flex-shrink:0;">
+          <option value="5" selected>5s</option>
+          <option value="7">7s</option>
           <option value="10">10s</option>
-          <option value="15">15s</option>
-          <option value="20" selected>20s</option>
-          <option value="30">30s</option>
         </select>
         <button class="ctrl-bar-btn danger" id="rehear-end-btn" onclick="stopRehearsal()"
                 style="display:none;background:var(--purple);border-color:var(--purple);color:#fff;">◼ END REHEARSAL</button>
@@ -356,9 +372,11 @@ if ('serviceWorker' in navigator) {
 
       <!-- Bottom controls (identical to musician) -->
       <div id="l-controls">
-        <button class="l-ctrl active" id="l-btn-mode"   onclick="lToggleMode()">LYRICS</button>
-        <button class="l-ctrl"        id="l-btn-scroll" onclick="lToggleScroll()">» AUTO</button>
-        <button class="l-ctrl"        id="l-btn-cols"   onclick="lToggleColumns()" title="Two columns">⫴</button>
+        <button class="l-ctrl active" id="l-btn-mode"      onclick="lToggleMode()">LYRICS</button>
+        <button class="l-ctrl"        id="l-btn-scroll"   onclick="lToggleScroll()">» AUTO</button>
+        <button class="l-ctrl"        id="l-btn-cols"     onclick="lToggleColumns()" title="Two columns">⫴</button>
+        <button class="l-ctrl"        id="l-btn-spacing"  onclick="lCycleSpacing()" title="Line spacing">≡</button>
+        <button class="l-ctrl"        id="l-btn-contrast" onclick="lToggleContrast()" title="High contrast">◐</button>
         <div style="flex:1;"></div>
         <div class="font-size-ctrl">
           <span class="font-size-lbl">A</span>
@@ -1032,7 +1050,10 @@ Here comes the sun…"></textarea>
           <select id="f-timesig">
             <option value="4/4">4/4</option>
             <option value="3/4">3/4</option>
+            <option value="2/4">2/4</option>
+            <option value="5/4">5/4</option>
             <option value="6/8">6/8</option>
+            <option value="12/8">12/8</option>
           </select>
         </div>
         <div class="form-group">
@@ -1173,7 +1194,10 @@ function renderSongs() {
   const st = document.getElementById('song-filter').value;
   const el = document.getElementById('song-list');
   const filtered = songs.filter(s =>
-    (!q  || s.title.toLowerCase().includes(q) || (s.artist || '').toLowerCase().includes(q)) &&
+    (!q  || s.title.toLowerCase().includes(q)
+         || (s.artist || '').toLowerCase().includes(q)
+         || (s.lyrics || '').toLowerCase().includes(q)
+         || (s.chords || '').toLowerCase().includes(q)) &&
     (!st || s.status === st)
   );
   el.innerHTML = filtered.length ? filtered.map(songCard).join('') :
@@ -1497,7 +1521,7 @@ function closeModal(e)      { if (e.target.id === 'modal-overlay') closeSongModa
 
 async function saveSong() {
   const title = document.getElementById('f-title').value.trim();
-  if (!title) { alert('Title is required.'); return; }
+  if (!title) { showToast('Title is required.'); return; }
   const body = {
     title, status: document.getElementById('f-status').value,
     artist:   document.getElementById('f-artist').value.trim()   || null,
@@ -1521,11 +1545,30 @@ async function saveSong() {
 
 async function deleteSong() {
   if (!editingSongId) return;
-  if (!confirm('Delete this song from the library? It will also be removed from any setlists.')) return;
-  await api.delete(`/api/songs/${editingSongId}`);
+  const id = editingSongId;
+  const s = songs.find(x => x.id === id);
+  const title = s ? s.title : 'song';
   closeSongModal();
-  await loadSongs();
-  if (currentSl) await loadSlSongs(currentSl.id);
+  // Hide it from the UI immediately; defer the actual delete so Undo
+  // is instant and needs no server round-trip.
+  songs = songs.filter(x => x.id !== id);
+  renderSongs();
+  if (currentSl) renderSlSongs();
+  deferDestructive(
+    `Deleted "${title}"`,
+    async () => {
+      try {
+        await api.delete(`/api/songs/${id}`);
+        await loadSongs();
+        if (currentSl) await loadSlSongs(currentSl.id);
+      } catch (e) { await loadSongs(); }
+    },
+    async () => {
+      // Undo: just reload the untouched server state
+      await loadSongs();
+      if (currentSl) await loadSlSongs(currentSl.id);
+    }
+  );
 }
 
 // ── Setlists ──────────────────────────────────────────────────
@@ -1540,7 +1583,7 @@ function renderSetlistList() {
     el.innerHTML = '<div style="color:var(--dim);padding:20px 16px;font-size:.85rem;">No setlists yet.</div>';
     return;
   }
-  el.innerHTML = setlists.map(sl => {
+  el.innerHTML = setlists.map((sl, i) => {
     const isActive = currentSl?.id === sl.id;
     const isInactive = sl.active === 0;
     return `<div class="sl-item ${isActive ? 'active' : ''} ${isInactive ? 'inactive' : ''}"
@@ -1553,6 +1596,10 @@ function renderSetlistList() {
         <div class="sl-name">${esc(sl.name)}</div>
         <div class="sl-meta">${sl.description ? esc(sl.description) : '&nbsp;'}</div>
       </div>
+      <div class="sl-reorder">
+        <button class="sl-move" onclick="event.stopPropagation(); moveSetlist(${i},-1)" ${i===0?'disabled':''} title="Move up">↑</button>
+        <button class="sl-move" onclick="event.stopPropagation(); moveSetlist(${i},1)" ${i===setlists.length-1?'disabled':''} title="Move down">↓</button>
+      </div>
       <button class="sl-active-toggle ${isInactive ? 'off' : 'on'}"
         onclick="event.stopPropagation(); toggleSetlistActiveById(${sl.id})"
         title="${isInactive ? 'Click to activate' : 'Click to deactivate'}"
@@ -1560,6 +1607,15 @@ function renderSetlistList() {
     </div>`;
   }).join('');
   initSlDrag();
+}
+
+async function moveSetlist(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= setlists.length) return;
+  [setlists[idx], setlists[newIdx]] = [setlists[newIdx], setlists[idx]];
+  renderSetlistList();
+  await api.put('/api/setlists/reorder', { order: setlists.map(s => s.id) });
+  await loadSetlists();
 }
 
 async function renameCurrentSetlist() {
@@ -1571,7 +1627,7 @@ async function renameSetlist(id, e) {
   if (e) e.stopPropagation();
   const sl = setlists.find(s => s.id === id);
   if (!sl) return;
-  const newName = prompt('Rename setlist:', sl.name);
+  const newName = await appPrompt('Rename setlist:', sl.name);
   if (!newName?.trim() || newName.trim() === sl.name) return;
   await api.put(`/api/setlists/${id}`, { name: newName.trim(), description: sl.description || '' });
   await loadSetlists();
@@ -1669,7 +1725,7 @@ async function removeSlSong(ssId) {
 
 async function setSection(idx) {
   const s = slSongs[idx];
-  const label = prompt('Section label (e.g. "Set 1", "Encore") — leave blank to clear:', s.section_label || '');
+  const label = await appPrompt('Section label (e.g. "Set 1", "Encore") — leave blank to clear:', s.section_label || '');
   if (label === null) return;
   await api.put(`/api/setlists/${currentSl.id}/songs/${s.ss_id}/section`, { label: label.trim() || null });
   await loadSlSongs(currentSl.id);
@@ -1700,22 +1756,8 @@ async function quickAddToSetlist(songId, title) {
   }
 }
 
-function showToast(msg) {
-  let t = document.getElementById('_toast');
-  if (!t) {
-    t = document.createElement('div');
-    t.id = '_toast';
-    t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);' +
-      'background:var(--surface);border:1px solid var(--border);border-radius:10px;' +
-      'padding:10px 22px;font-size:.85rem;color:var(--text);z-index:9999;' +
-      'pointer-events:none;transition:opacity .3s;white-space:nowrap;box-shadow:0 4px 24px rgba(0,0,0,.4);';
-    document.body.appendChild(t);
-  }
-  t.textContent = msg;
-  t.style.opacity = '1';
-  clearTimeout(t._hide);
-  t._hide = setTimeout(() => { t.style.opacity = '0'; }, 2200);
-}
+// (toast UI is defined once near the end of the file — see showToast/deferDestructive)
+
 
 async function addToSetlist(songId) {
   await api.post(`/api/setlists/${currentSl.id}/songs`, { song_id: songId, position: slSongs.length });
@@ -1724,7 +1766,7 @@ async function addToSetlist(songId) {
 }
 
 async function newSetlist() {
-  const name = prompt('Setlist name:');
+  const name = await appPrompt('New setlist name:');
   if (!name?.trim()) return;
   const sl = await api.post('/api/setlists', { name: name.trim() });
   await loadSetlists();
@@ -1733,8 +1775,9 @@ async function newSetlist() {
 
 async function deleteCurrentSetlist() {
   if (!currentSl) return;
-  if (!confirm(`Delete "${currentSl.name}"? This cannot be undone.`)) return;
-  await api.delete(`/api/setlists/${currentSl.id}`);
+  const id = currentSl.id;
+  const name = currentSl.name;
+  // Collapse the editor immediately; defer the server delete for Undo.
   currentSl = null;
   slSongs   = [];
   document.getElementById('sl-editor-toolbar').style.display = 'none';
@@ -1742,7 +1785,13 @@ async function deleteCurrentSetlist() {
   document.getElementById('lib-strip').style.display = 'none';
   document.getElementById('sl-empty').style.display = '';
   document.getElementById('sl-songs').innerHTML = '';
-  await loadSetlists();
+  setlists = setlists.filter(s => s.id !== id);
+  renderSetlistList();
+  deferDestructive(
+    `Deleted "${name}"`,
+    async () => { try { await api.delete(`/api/setlists/${id}`); } catch (e) {} await loadSetlists(); },
+    async () => { await loadSetlists(); }
+  );
 }
 
 async function cloneCurrentSetlist() {
@@ -1807,6 +1856,47 @@ function initSlDrag() {
       const newOrder = [...list.querySelectorAll('.sl-item')].map(i => +i.dataset.id);
       await api.put('/api/setlists/reorder', { order: newOrder });
       await loadSetlists();
+    });
+  });
+
+  // Touch / pointer reordering — HTML5 drag-and-drop does not fire on
+  // touch devices (the leader is usually on an iPad), so we drive the
+  // same reorder from the drag handle with Pointer Events.
+  initPointerReorder(list, '.sl-item', '.sl-drag-handle', async order => {
+    await api.put('/api/setlists/reorder', { order });
+    await loadSetlists();
+  });
+}
+
+// Generic pointer-based row reorder. Press the handle, drag over other
+// rows, release to commit. Works with mouse and touch alike.
+function initPointerReorder(list, rowSel, handleSel, persist) {
+  list.querySelectorAll(handleSel).forEach(handle => {
+    handle.addEventListener('pointerdown', e => {
+      // Let the desktop native DnD path own mouse drags on the row;
+      // this handler is what makes touch work, so only claim touch/pen.
+      if (e.pointerType === 'mouse') return;
+      e.preventDefault();
+      const row = handle.closest(rowSel);
+      if (!row) return;
+      row.classList.add('dragging');
+      const move = ev => {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const over = el && el.closest(rowSel);
+        if (!over || over === row || over.parentElement !== list) return;
+        const rows = [...list.querySelectorAll(rowSel)];
+        if (rows.indexOf(row) < rows.indexOf(over)) over.after(row);
+        else over.before(row);
+      };
+      const up = async () => {
+        row.classList.remove('dragging');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        const order = [...list.querySelectorAll(rowSel)].map(i => +i.dataset.id);
+        await persist(order);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
     });
   });
 }
@@ -2044,7 +2134,7 @@ function applyLiveUI() {
 
 async function goLive() {
   const slId = parseInt(document.getElementById('live-sl-select').value);
-  if (!slId) { alert('Please select a setlist first.'); return; }
+  if (!slId) { showToast('Please select a setlist first.'); return; }
   const sl = setlists.find(s => s.id === slId);
   liveState = { setlist_id: slId, setlist_name: sl.name, song_index: 0, is_live: true };
   liveSlSongs = await api.get(`/api/setlists/${slId}/songs`);
@@ -2053,7 +2143,7 @@ async function goLive() {
 }
 
 async function endShow() {
-  if (!confirm('End the show? All musician screens will go to standby.')) return;
+  if (!await appConfirm('End the show? All musician screens will go to standby.', { okLabel: 'End Show', danger: true })) return;
   stopMetro();
   lStopScroll();
   rehearActive = false;
@@ -2071,14 +2161,12 @@ async function navSong(dir) {
   liveState.song_index = newIdx;
   await api.put('/api/live', liveState);
   await renderStageCard();
-  restartMetroIfOn();
 }
 
 async function jumpToSong(idx) {
   liveState.song_index = idx;
   await api.put('/api/live', liveState);
   await renderStageCard();
-  restartMetroIfOn();
 }
 
 async function renderStageCard() {
@@ -2610,6 +2698,41 @@ function applyCompactStage() {
   }
 }
 
+// ── Spacing (leader) ──────────────────────────────────────────
+const L_SPACINGS = ['normal','tight','loose'];
+let lSpacingIdx  = Math.max(0, L_SPACINGS.indexOf(localStorage.getItem('l_spacing')||'normal'));
+function lCycleSpacing() {
+  lSpacingIdx = (lSpacingIdx + 1) % L_SPACINGS.length;
+  localStorage.setItem('l_spacing', L_SPACINGS[lSpacingIdx]);
+  lApplySpacing();
+}
+function lApplySpacing() {
+  const el  = document.getElementById('l-song-content');
+  const btn = document.getElementById('l-btn-spacing');
+  L_SPACINGS.forEach(s => el && el.classList.remove('spacing-'+s));
+  const s = L_SPACINGS[lSpacingIdx];
+  if (s !== 'normal' && el) el.classList.add('spacing-'+s);
+  if (btn) {
+    btn.textContent = ({normal:'≡',tight:'≣',loose:'☰'})[s]||'≡';
+    btn.classList.toggle('active', s !== 'normal');
+  }
+}
+(function(){ lApplySpacing(); })();
+
+// ── High contrast (leader) ────────────────────────────────────
+let lHiContrast = localStorage.getItem('l_hicontrast') === '1';
+function lToggleContrast() {
+  lHiContrast = !lHiContrast;
+  localStorage.setItem('l_hicontrast', lHiContrast ? '1' : '0');
+  lApplyContrast();
+}
+function lApplyContrast() {
+  document.body.classList.toggle('hi-contrast', lHiContrast);
+  const btn = document.getElementById('l-btn-contrast');
+  if (btn) btn.classList.toggle('active', lHiContrast);
+}
+(function(){ lApplyContrast(); lApplyMode(); })();
+
 // ── Two-column layout ─────────────────────────────────────────
 let lTwoCol = localStorage.getItem('l_twocol') === '1';
 
@@ -2625,14 +2748,18 @@ function lApplyColumns() {
   lRenderSong();
 }
 
+function lApplyMode() {
+  const btn = document.getElementById('l-btn-mode');
+  if (!btn) return;
+  const labels = { lyrics:'LYRICS', chords:'CHORDS', consol:'CONSOL', chordsonly:'MELODY' };
+  btn.textContent = labels[lMode] || 'LYRICS';
+  btn.classList.add('active');
+}
 function lToggleMode() {
   const cycle = ['lyrics', 'chords', 'consol', 'chordsonly'];
   lMode = cycle[(cycle.indexOf(lMode) + 1) % cycle.length] || 'lyrics';
   localStorage.setItem('l_mode', lMode);
-  const btn = document.getElementById('l-btn-mode');
-  const labels = { lyrics:'LYRICS', chords:'CHORDS', consol:'CONSOL', chordsonly:'MELODY' };
-  btn.textContent = labels[lMode] || 'LYRICS';
-  btn.classList.toggle('active', lMode === 'lyrics');
+  lApplyMode();
   lRenderSong();
 }
 
@@ -2711,10 +2838,11 @@ async function uploadDatabase(input) {
   if (!file) return;
   input.value = '';  // reset so same file can be re-selected
 
-  if (!confirm(
-    'Replace the entire database with "' + file.name + '"?\n\n' +
-    'The current database will be backed up automatically on the server.\n' +
-    'The page will reload after upload. This cannot be undone.'
+  if (!await appConfirm(
+    'Replace the entire database with "' + file.name + '"? ' +
+    'The current database is backed up automatically on the server, ' +
+    'but this replaces everything and reloads the page.',
+    { okLabel: 'Replace', danger: true }
   )) return;
 
   const fd = new FormData();
@@ -2724,13 +2852,13 @@ async function uploadDatabase(input) {
     const resp = await fetch('/api/db/upload', { method: 'POST', body: fd, headers: _authHeaders() });
     const data = await resp.json();
     if (!resp.ok) {
-      alert('Upload failed: ' + (data.detail || resp.statusText));
+      showToast('Upload failed: ' + (data.detail || resp.statusText));
       return;
     }
-    alert('Database replaced successfully. The page will now reload.');
+    showToast('Database replaced. Reloading…');
     location.reload();
   } catch (err) {
-    alert('Upload error: ' + err.message);
+    showToast('Upload error: ' + err.message);
   }
 }
 
@@ -2842,36 +2970,35 @@ function _debugLoop() {
 function _debugRender() {
   const el = document.getElementById('debug-overlay');
   if (!el) return;
-  const ws     = leaderWs;
+  const ws     = typeof leaderWs !== 'undefined' ? leaderWs : null;
   const wsState = ['CONNECTING','OPEN','CLOSING','CLOSED'];
   const wsOk   = ws && ws.readyState === 1;
-  const wsSince = _lastWsMsgMs ? Math.round((Date.now() - _lastWsMsgMs) / 100) / 10 + 's ago' : 'never';
-  const acTime  = _metroAc ? _metroAc.currentTime.toFixed(3) : 'n/a';
-  const wallSec = Date.now() / 1000;
-  const acDrift = (_metroAc && parseFloat(acTime) > 0)
-    ? ((parseFloat(acTime) - wallSec - clockOffset/1000).toFixed(3) + 's') : 'n/a';
-  const epochAge = _serverEpochMs
-    ? (((Date.now() - (_serverEpochMs - clockOffset)) / 1000).toFixed(1) + 's') : 'n/a';
+  const wsSince = _lastWsMsgMs ? (Math.round((Date.now()-_lastWsMsgMs)/100)/10)+'s ago' : 'never';
+  const offset  = typeof clockOffset !== 'undefined' ? clockOffset.toFixed(1)+'ms' : 'n/a';
+  const synced  = typeof _syncDone !== 'undefined' ? String(_syncDone) : 'n/a';
+  const mOn     = typeof metroOn  !== 'undefined' ? String(metroOn)  : 'n/a';
+  const bpm     = typeof metroBpm !== 'undefined' ? metroBpm : 'n/a';
+  const bar     = typeof metroBar !== 'undefined' ? metroBar : 'n/a';
+  const beat    = typeof _lastBeat !== 'undefined' ? _lastBeat : 'n/a';
+  const warm    = 'n/a'; // leader has no local metro engine
+  const rtt     = _lastRtt ? _lastRtt+'ms' : 'n/a';
   const musCount = document.getElementById('musician-count')?.textContent || 'n/a';
 
-  const c = (v, okVal, warnVal) => {
-    if (v === okVal || v === 'true') return `<span class="db-ok">${v}</span>`;
-    if (v === warnVal || v === 'n/a') return `<span class="db-warn">${v}</span>`;
-    return `<span class="db-err">${v}</span>`;
-  };
+  const c = (v, okV) => v===okV||v==='true'
+    ? `<span class="db-ok">${v}</span>`
+    : v==='n/a'||v==='false'
+      ? `<span class="db-warn">${v}</span>`
+      : `<span class="db-err">${v}</span>`;
 
   el.innerHTML = [
-    `<div class="db-head">DEBUG — LEADER</div>`,
-    `<div>WS: ${c(wsOk ? 'OPEN' : (ws ? wsState[ws.readyState]||'?' : 'null'), 'OPEN', 'CONNECTING')}</div>`,
+    '<div class="db-head">DEBUG — LEADER</div>',
+    `<div>WS: ${c(wsOk?'OPEN':(ws?wsState[ws.readyState]:'null'),'OPEN')}</div>`,
     `<div>Last msg: ${wsSince}</div>`,
-    `<div>Clock offset: ${clockOffset.toFixed(1)}ms</div>`,
-    `<div>Last RTT: ${_lastRtt ? _lastRtt + 'ms' : 'n/a'}</div>`,
-    `<div>Sync done: ${c(String(_syncDone), 'true', 'n/a')}</div>`,
-    `<div>Metro on: ${c(String(metroOn),'true','n/a')} | ${metroBpm} BPM | ${metroBar}/bar</div>`,
-    `<div>Beat: ${_lastBeat} | Warmup: ${_metroWarmup}</div>`,
-    `<div>Epoch age: ${epochAge}</div>`,
-    `<div>AC time: ${acTime}</div>`,
-    `<div>AC drift: ${acDrift}</div>`,
+    `<div>Clock offset: ${offset}</div>`,
+    `<div>RTT: ${rtt}</div>`,
+    `<div>Sync: ${c(synced,'true')}</div>`,
+    `<div>Metro: ${c(mOn,'true')} ${bpm} BPM ${bar}/bar</div>`,
+    `<div>Beat: ${beat} | Warmup: ${warm}</div>`,
     `<div>Musicians: ${musCount}</div>`,
   ].join('');
 }
@@ -2899,12 +3026,12 @@ function handleSyncReply(msg) {
   _lastRtt = rtt;
   const offset  = msg.server - (msg.t0 + rtt / 2);
   syncSamples.push({ rtt, offset });
-  if (syncSamples.length < 16) {
-    setTimeout(syncClock, 40);
+  if (syncSamples.length < 8) {
+    setTimeout(syncClock, 20);
   } else {
-    // Discard the 8 worst RTT samples, average the best 8
+    // Discard the 4 worst RTT samples, average the best 4
     syncSamples.sort((a, b) => a.rtt - b.rtt);
-    const good = syncSamples.slice(0, 8);
+    const good = syncSamples.slice(0, 4);
     const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
     // Smooth large jumps to avoid sudden phase shifts mid-performance
     // First sync: apply full offset immediately for fast convergence.
@@ -2948,111 +3075,23 @@ setInterval(_broadcastScroll, 2000);
 let metroOn         = false;
 let metroBpm        = 0;
 let metroBar        = 4;
-let _metroAc        = null;
-let _metroST        = null;
 let _lastBeat       = -1;
-let _serverEpochMs  = 0;
-const _LOOKAHEAD    = 0.200;
-const _SCHEDULE_MS  = 25;
-
-function _getAc() {
-  if (!_metroAc) {
-    try { _metroAc = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-  }
-  if (_metroAc && _metroAc.state === 'suspended') {
-    _metroAc.resume().catch(() => {});
-  }
-  // Return the context even if still resuming — currentTime will be 0 briefly
-  // but _audioEpochNow recalibrates every tick so phase stays correct once running
-  return _metroAc || null;
-}
-
-function _audioEpochNow(ac) {
-  return (_serverEpochMs - clockOffset) / 1000 + (ac.currentTime - Date.now() / 1000);
-}
-
-function _metroScheduler() {
-  if (!metroOn) return;
-  const ac = _getAc();
-  if (!ac || ac.currentTime < 0.001) {
-    _metroFallback();
-    _metroST = setTimeout(_metroScheduler, _SCHEDULE_MS);
-    return;
-  }
-  const beatSec    = 60 / metroBpm;
-  const nowAudio   = ac.currentTime;
-  const audioEpoch = _audioEpochNow(ac);
-  const horizon    = nowAudio + _LOOKAHEAD;
-  let beat = Math.max(0, Math.floor((nowAudio - audioEpoch) / beatSec));
-  while (true) {
-    const beatTime = audioEpoch + beat * beatSec;
-    if (beatTime > horizon) break;
-    if (beat > _lastBeat) {
-      _lastBeat = beat;
-      const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
-      const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
-      const _beat = beat; setTimeout(() => { if (metroOn) fireFlash(metroBpm, isDown, _beat); }, delayMs);
-    }
-    beat++;
-  }
-  const nextBeatTime = audioEpoch + (Math.floor((nowAudio - audioEpoch) / beatSec) + 1) * beatSec;
-  const msUntilNextBeat = Math.max(1, (nextBeatTime - nowAudio - _LOOKAHEAD * 0.5) * 1000);
-  _metroST = setTimeout(_metroScheduler, Math.min(_SCHEDULE_MS, msUntilNextBeat));
-}
-
-function _metroFallback() {
-  const beatMs     = 60000 / metroBpm;
-  const localEpoch = _serverEpochMs - clockOffset;
-  const beat       = Math.max(0, Math.floor((Date.now() - localEpoch) / beatMs));
-  if (beat > _lastBeat) {
-    _lastBeat = beat;
-    fireFlash(metroBpm, (beat % metroBar + metroBar) % metroBar === 0, beat);
-  }
-}
-
-function _startMetroEngine(bpm, bar, serverEpochMs) {
-  _stopMetroEngine();
-  metroBpm       = bpm;
-  metroBar       = bar || 4;
-  _serverEpochMs = serverEpochMs;
-  metroOn        = true;
-  _lastBeat      = -1;
-  _getAc();
-  _metroScheduler(); // first tick immediately; subsequent ticks self-schedule
-}
-
-let _metroWarmup = false;
-
-function _stopMetroEngine() {
-  metroOn = false;
-  clearTimeout(_metroST);
-  _metroST  = null;
-  _lastBeat = -1;
-  const f  = document.getElementById('metro-flash');
-  if (f) f.classList.remove('beat', 'downbeat');
-  const gr = document.getElementById('metro-getready');
-  if (gr) gr.style.display = 'none';
-}
-
-['click','touchstart','keydown'].forEach(ev =>
-  document.addEventListener(ev, () => {
-    if (_metroAc) _metroAc.resume().catch(() => {});
-  }, { passive: true }));
+let _serverEpochMs  = 0;     // kept for debug overlay
 
 
-function fireFlash(bpm, isDown, beatNum) {
-  if (_metroWarmup) return;
-  const flash = document.getElementById('metro-flash');
-  const num   = document.getElementById('metro-num');
-  if (!flash) return;
-  const beatMs    = 60000 / (bpm || 120);
-  const beatInBar = ((beatNum || 0) % metroBar) + 1;
-  if (num) num.textContent = beatInBar;
-  flash.classList.toggle('downbeat', isDown);
-  flash.classList.add('beat');
-  const holdMs = isDown ? Math.min(140, beatMs * 0.22) : Math.min(90, beatMs * 0.14);
-  setTimeout(() => flash.classList.remove('beat', 'downbeat'), holdMs);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let metroTimeout = null;
 
@@ -3110,46 +3149,29 @@ function startMetro() {
     document.getElementById('leader-metro-sub').textContent = 'no BPM';
     return;
   }
-  const serverEpoch = serverNow();
   const beatsPerBar = timeSigBeats(cur?.time_sig);
-  _startMetroEngine(bpm, beatsPerBar, serverEpoch);
+  metroOn = true; metroBpm = bpm; metroBar = beatsPerBar;
   if (btn) btn.classList.add('active');
   document.getElementById('leader-metro-sub').textContent = `${bpm} bpm`;
   const rSub = document.getElementById('r-metro-sub');
   if (rSub) rSub.textContent = `${bpm} bpm`;
   const rBtn = document.getElementById('r-metro-btn');
   if (rBtn) rBtn.classList.add('active');
-  // GET READY warmup — set before sending WS so leader and musicians suppress together
-  const _grEl  = document.getElementById('metro-getready');
-  const _bpmEl = document.getElementById('gr-bpm-display');
-  _metroWarmup = true;
-  if (_grEl) { _grEl.style.display = 'flex'; if (_bpmEl) _bpmEl.textContent = bpm + ' BPM'; }
-  // End warmup at next bar boundary relative to the shared epoch
-  const _beatMs      = 60000 / bpm;
-  const _bar         = beatsPerBar;
-  const _localEpoch  = serverEpoch - clockOffset;
-  const _elapsed     = Math.max(0, (Date.now() - _localEpoch) / _beatMs);
-  const _nextBarBeat = (Math.floor(_elapsed / _bar) + 1) * _bar;
-  const _warmupMs    = Math.max(800, (_nextBarBeat - _elapsed) * _beatMs);
-  setTimeout(() => { _metroWarmup = false; if (_grEl) _grEl.style.display = 'none'; }, _warmupMs);
+  // Send to server — monitor receives and flashes
   if (leaderWs && leaderWs.readyState === 1) {
-    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:beatsPerBar, server_epoch:serverEpoch }));
+    leaderWs.send(JSON.stringify({ type:'metronome_start', bpm, beats_per_bar:beatsPerBar, server_epoch: Date.now() }));
   }
-  const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 20;
+  const secs = parseInt(document.getElementById('l-metro-timeout-sel')?.value) || 5;
   clearTimeout(metroTimeout);
   metroTimeout = setTimeout(stopMetro, secs * 1000);
 }
 
 function stopMetro() {
-  _metroWarmup = false;
-  _stopMetroEngine();
+  metroOn = false;
   clearTimeout(metroTimeout);
   const btn = document.getElementById('l-metro-btn');
   if (btn) btn.classList.remove('active');
-  const sub = document.getElementById('leader-metro-sub');
-  if (sub) sub.textContent = '';
-  const rSub = document.getElementById('r-metro-sub');
-  if (rSub) rSub.textContent = '';
+  document.getElementById('leader-metro-sub').textContent = '';
   const rBtn = document.getElementById('r-metro-btn');
   if (rBtn) rBtn.classList.remove('active');
   if (leaderWs && leaderWs.readyState === 1) {
@@ -3157,11 +3179,7 @@ function stopMetro() {
   }
 }
 
-function restartMetroIfOn() {
-  if (!metroOn) return;
-  stopMetro();
-  setTimeout(startMetro, 100);
-}
+
 
 
 // ── Util ──────────────────────────────────────────────────────
@@ -3223,6 +3241,16 @@ async function submitPin() {
     await loadSongs();
     await loadSetlists();
     showTab('songs', document.querySelector('.tab-btn[data-tab="songs"]'));
+    // If still on the factory PIN, nudge toward changing it.
+    fetch('/api/auth/status').then(r => r.json()).then(st => {
+      if (st.pin_is_default) {
+        showToast('You\u2019re using the default PIN (1234). Change it in Settings.', {
+          actionLabel: 'Settings',
+          duration: 9000,
+          onAction: () => { if (typeof openSettingsModal === 'function') openSettingsModal(); },
+        });
+      }
+    }).catch(() => {});
   } catch(e) {
     errEl.textContent = 'Could not reach server. Is the Pi on?';
     errEl.style.display = 'block';
@@ -3261,13 +3289,24 @@ function renderCrewList() {
     el.innerHTML = '<div style="padding:16px 20px;color:var(--dim);font-size:.85rem;">No members yet. Add some above.</div>';
     return;
   }
-  el.innerHTML = bandMembers.map(m => `
+  el.innerHTML = bandMembers.map((m, i) => `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 20px;
          border-bottom:1px solid var(--border);">
       <span style="flex:1;font-size:.9rem;">${esc(m.name)}</span>
+      <button class="sl-move" onclick="moveBandMember(${i},-1)" ${i===0?'disabled':''} title="Move up">↑</button>
+      <button class="sl-move" onclick="moveBandMember(${i},1)" ${i===bandMembers.length-1?'disabled':''} title="Move down">↓</button>
       <button class="btn danger" style="padding:4px 10px;font-size:.75rem;"
               onclick="removeBandMember(${m.id})">✕</button>
     </div>`).join('');
+}
+
+async function moveBandMember(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= bandMembers.length) return;
+  [bandMembers[idx], bandMembers[newIdx]] = [bandMembers[newIdx], bandMembers[idx]];
+  renderCrewList();
+  await api.put('/api/band_members/reorder', { order: bandMembers.map(m => m.id) });
+  await loadBandMembers();
 }
 
 async function addBandMember() {
@@ -3279,7 +3318,7 @@ async function addBandMember() {
     input.value = '';
     await loadBandMembers();
   } catch(e) {
-    if (e.message.includes('409')) alert('That name already exists.');
+    if (e.message.includes('409')) showToast('That name already exists.');
   }
 }
 
@@ -3515,7 +3554,7 @@ function closeSettingsModal(e) {
 
 async function changePin() {
   const newPin = document.getElementById('new-pin-input').value.trim();
-  if (!newPin || newPin.length < 4) { alert('PIN must be at least 4 characters.'); return; }
+  if (!newPin || newPin.length < 4) { showToast('PIN must be at least 4 characters.'); return; }
   await api.put('/api/auth/pin', { new_pin: newPin });
   document.getElementById('pin-change-msg').style.display = 'block';
   // Server invalidated all sessions — log out after brief delay
@@ -3922,7 +3961,7 @@ function headerFor(fieldKey) {
 // ── Run the import ────────────────────────────────────────────
 async function runCsvImport() {
   const titleHeader = headerFor('title');
-  if (!titleHeader) { alert('Please map a column to Title first.'); return; }
+  if (!titleHeader) { showToast('Please map a column to Title first.'); return; }
 
   const btn    = document.getElementById('csv-import-btn');
   const status = document.getElementById('csv-import-status');
@@ -3994,5 +4033,104 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <div id="debug-overlay"></div>
+<script>
+// ── Toast + deferred undo ─────────────────────────────────────
+// Shows a transient message. For destructive actions we DEFER the
+// real work until the undo window closes, so Undo needs no server
+// round-trip and never causes ID churn.
+(function(){
+  const wrap = document.createElement('div');
+  wrap.id = 'toast-wrap';
+  document.body.appendChild(wrap);
+})();
+
+function showToast(message, { actionLabel, onAction, duration = 5000 } = {}) {
+  const wrap = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  const msg = document.createElement('span');
+  msg.className = 'toast-msg';
+  msg.textContent = message;
+  el.appendChild(msg);
+  let done = false;
+  const close = () => {
+    if (done) return; done = true;
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 200);
+  };
+  if (actionLabel) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action';
+    btn.textContent = actionLabel;
+    btn.onclick = () => { close(); onAction && onAction(); };
+    el.appendChild(btn);
+  }
+  wrap.appendChild(el);
+  const timer = setTimeout(close, duration);
+  return { close: () => { clearTimeout(timer); close(); } };
+}
+
+// Run `commit` after the undo window unless the user taps Undo.
+// `undo` is optional cleanup if they do.
+function deferDestructive(message, commit, undo, duration = 5000) {
+  let cancelled = false;
+  const t = setTimeout(() => { if (!cancelled) commit(); }, duration);
+  showToast(message, {
+    actionLabel: 'Undo',
+    duration,
+    onAction: () => { cancelled = true; clearTimeout(t); undo && undo(); },
+  });
+}
+
+// ── Promise-based confirm / prompt (replaces native blocking dialogs) ──
+function _buildModal(inner) {
+  const ov = document.createElement('div');
+  ov.className = 'app-modal-overlay';
+  ov.innerHTML = `<div class="app-modal">${inner}</div>`;
+  document.body.appendChild(ov);
+  return ov;
+}
+
+function appConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', danger = false } = {}) {
+  return new Promise(resolve => {
+    const ov = _buildModal(`
+      <div class="app-modal-msg"></div>
+      <div class="app-modal-actions">
+        <button class="btn app-modal-cancel">${cancelLabel}</button>
+        <button class="btn ${danger ? 'danger' : 'primary'} app-modal-ok">${okLabel}</button>
+      </div>`);
+    ov.querySelector('.app-modal-msg').textContent = message;
+    const done = v => { ov.remove(); resolve(v); };
+    ov.querySelector('.app-modal-ok').onclick = () => done(true);
+    ov.querySelector('.app-modal-cancel').onclick = () => done(false);
+    ov.addEventListener('click', e => { if (e.target === ov) done(false); });
+    ov.querySelector('.app-modal-ok').focus();
+  });
+}
+
+function appPrompt(message, initial = '', { okLabel = 'OK' } = {}) {
+  return new Promise(resolve => {
+    const ov = _buildModal(`
+      <div class="app-modal-msg"></div>
+      <input class="app-modal-input" type="text">
+      <div class="app-modal-actions">
+        <button class="btn app-modal-cancel">Cancel</button>
+        <button class="btn primary app-modal-ok">${okLabel}</button>
+      </div>`);
+    ov.querySelector('.app-modal-msg').textContent = message;
+    const input = ov.querySelector('.app-modal-input');
+    input.value = initial;
+    const done = v => { ov.remove(); resolve(v); };
+    ov.querySelector('.app-modal-ok').onclick = () => done(input.value);
+    ov.querySelector('.app-modal-cancel').onclick = () => done(null);
+    ov.addEventListener('click', e => { if (e.target === ov) done(null); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') done(input.value);
+      if (e.key === 'Escape') done(null);
+    });
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+  });
+}
+</script>
 </body>
 </html>
