@@ -216,6 +216,51 @@ html,body { height: 100%; overflow: hidden; background: var(--bg); color: var(--
 }
 #controls::-webkit-scrollbar { display:none; }
 #controls.collapsed { padding:0; height:4px; overflow:hidden; opacity:.35; cursor:pointer; }
+/* ── Reconnect strip + stale border ─────────────────────────── */
+#reconnect-strip {
+  display:none; position:fixed; top:0; left:0; right:0; z-index:9998;
+  background:var(--red); color:#fff;
+  font-family:'DM Sans',sans-serif; font-size:.8rem; font-weight:700;
+  letter-spacing:1px; text-align:center; padding:6px 10px;
+}
+body.ws-stale #reconnect-strip { display:block; }
+body.ws-stale #app { box-shadow:inset 0 0 0 3px var(--red); }
+.scroll-speed-ctrl { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.scroll-speed-ctrl .ctrl.spd { padding:9px 10px; min-width:34px; }
+#outline-pop {
+  display:none; position:fixed; z-index:9997;
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  box-shadow:0 8px 28px rgba(0,0,0,.55); padding:6px;
+  max-height:55vh; overflow-y:auto; min-width:160px; max-width:80vw;
+}
+#outline-pop.open { display:block; }
+#outline-pop button {
+  display:block; width:100%; text-align:left; background:none; border:none;
+  color:var(--text); font-family:'DM Sans',sans-serif; font-size:.95rem;
+  padding:11px 14px; border-radius:8px; cursor:pointer; white-space:nowrap;
+}
+#outline-pop button:active { background:var(--border); }
+#outline-pop .empty { color:var(--dim); padding:12px 14px; font-size:.85rem; }
+.scroll-speed-val {
+  font-family:'DM Mono',monospace; font-size:.74rem; color:var(--dim);
+  min-width:34px; text-align:center;
+}
+/* ── Section jump outline ───────────────────────────────────── */
+#section-jump {
+  display:none; position:sticky; top:0; z-index:5;
+  background:linear-gradient(var(--bg) 70%, transparent);
+  padding:8px 16px 10px; gap:6px; flex-wrap:wrap;
+  -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px);
+}
+#section-jump.on { display:flex; }
+.sj-chip {
+  background:var(--surface); border:1px solid var(--border); color:var(--dim);
+  border-radius:999px; padding:5px 12px; font-size:.74rem; font-weight:600;
+  font-family:'DM Sans',sans-serif; cursor:pointer; white-space:nowrap;
+  letter-spacing:.5px; min-height:32px;
+}
+.sj-chip:active { background:var(--amber); color:#000; }
+
 .ctrl {
   background:var(--border); border:none; border-radius:10px; color:var(--text);
   cursor:pointer; font-family:'DM Sans',sans-serif; font-size:.78rem; font-weight:600;
@@ -264,71 +309,13 @@ body.hi-contrast #song-content { color:#ffffff; }
 #app.content-active #ctrl-expand-btn { display:block; }
 
 /* ── Metronome flash overlay ──────────────────────────────── */
-#metro-flash {
-  position: fixed; inset: 0; pointer-events: none; z-index: 100;
-  opacity: 0;
-  display: flex; align-items: center; justify-content: center;
-  transition: opacity 60ms ease-out;
-}
-#metro-flash.beat { opacity: 1; }
-#metro-flash .metro-ring {
-  position: absolute; inset: 0;
-  background: radial-gradient(ellipse at center,
-    transparent 35%,
-    rgba(245,158,11,0.18) 68%,
-    rgba(255,255,255,0.42) 100%);
-}
-#metro-flash.downbeat .metro-ring {
-  background: radial-gradient(ellipse at center,
-    transparent 28%,
-    rgba(245,158,11,0.38) 62%,
-    rgba(255,255,255,0.68) 100%);
-}
-#metro-flash .metro-num {
-  position: relative; z-index: 1;
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(6rem, 22vw, 18rem);
-  line-height: 1;
-  color: rgba(245,158,11,0.72);
-  letter-spacing: 4px;
-  text-shadow: 0 0 60px rgba(245,158,11,0.4);
-  transform: scale(0.88);
-  transition: transform 60ms ease-out;
-}
-#metro-flash.beat .metro-num {
-  transform: scale(1);
-}
-#metro-flash.downbeat .metro-num {
-  color: rgba(255,255,255,0.88);
-  text-shadow: 0 0 80px rgba(245,158,11,0.7), 0 0 20px rgba(255,255,255,0.5);
-}
-/* GET READY overlay */
-#metro-getready {
-  position: fixed; inset: 0; pointer-events: none; z-index: 101;
-  display: none; align-items: center; justify-content: center;
-  flex-direction: column; gap: 16px;
-  background: rgba(0,0,0,0.55);
-}
-#metro-getready .gr-text {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(3rem, 10vw, 8rem);
-  letter-spacing: 8px;
-  color: var(--amber);
-  animation: gr-pulse 0.5s ease-in-out infinite alternate;
-}
-#metro-getready .gr-bpm {
-  font-family: 'DM Mono', monospace;
-  font-size: clamp(1rem, 3vw, 2rem);
-  color: var(--dim);
-  letter-spacing: 3px;
-}
+
 @keyframes gr-pulse {
   from { opacity: 0.5; transform: scale(0.97); }
   to   { opacity: 1.0; transform: scale(1.03); }
 }
 
 /* BPM readout in button */
-#btn-metro { min-width: 72px; }
 #btn-metro .bpm-sub {
   display: block; font-size: .62rem; font-weight: 400;
   opacity: .7; margin-top: 1px; letter-spacing: 0;
@@ -366,8 +353,8 @@ body.hi-contrast #song-content { color:#ffffff; }
   }
 
   #controls { padding:7px 8px; gap:6px; flex-wrap:wrap; }
-  .ctrl { padding:9px 11px; font-size:.78rem; }
-  #metro-timeout-sel { font-size:.7rem; padding:5px 6px; }
+  .ctrl { padding:12px 14px; font-size:.82rem; min-height:44px; min-width:44px; }
+  .ctrl.spd { padding:12px 12px; }
 }
 
 /* ── Phone landscape / small tablet (481–768px) ───────── */
@@ -520,16 +507,14 @@ body.hi-contrast #song-content { color:#ffffff; }
 </div>
 
 <!-- ── Metronome flash overlay ────────────────────────────── -->
-<div id="metro-flash">
-  <div class="metro-ring"></div>
   <div class="metro-num" id="metro-num">1</div>
 </div>
-<div id="metro-getready">
-  <div class="gr-text">GET READY</div>
   <div class="gr-bpm" id="gr-bpm-display"></div>
 </div>
 
 <!-- ── Main app ───────────────────────────────────────────── -->
+<div id="reconnect-strip">RECONNECTING — screen may be out of sync</div>
+<div id="outline-pop"></div>
 <div id="app">
 
   <div id="hdr">
@@ -553,6 +538,7 @@ body.hi-contrast #song-content { color:#ffffff; }
   </div>
 
   <div id="content-wrap">
+    <div id="section-jump"></div>
     <div id="waiting">
       <img class="wait-corner wait-tl" src="/static/img/logo_top_right.png"    alt="">
       <img class="wait-corner wait-br" src="/static/img/logo_bottom_left.png"  alt="">
@@ -567,30 +553,26 @@ body.hi-contrast #song-content { color:#ffffff; }
   <div id="controls">
     <button class="ctrl active" id="btn-mode"   onclick="toggleMode()">LYRICS</button>
     <button class="ctrl"        id="btn-scroll" onclick="toggleScroll()">» AUTO</button>
+    <div class="scroll-speed-ctrl">
+      <button class="ctrl spd" onclick="setScrollSpeed(scrollSpeed - 0.25)" title="Slower">–</button>
+      <span id="scroll-speed-val" class="scroll-speed-val">1×</span>
+      <button class="ctrl spd" onclick="setScrollSpeed(scrollSpeed + 0.25)" title="Faster">+</button>
+    </div>
     <div class="font-size-ctrl">
       <span class="font-size-lbl">A</span>
       <input type="range" id="m-font-slider" min="70" max="250" value="100" step="10"
              oninput="setFontSize(this.value)" title="Lyrics font size">
       <span class="font-size-lbl" style="font-size:1.1em;">A</span>
     </div>
-    <button class="ctrl"        id="btn-metro"  onclick="toggleMetro()">
-      ◉ FLASH<span class="bpm-sub" id="metro-bpm-sub"></span>
-    </button>
-    <select id="metro-timeout-sel" title="Auto-stop after…"
-      style="background:var(--border);border:none;border-radius:10px;color:var(--dim);
-             font-family:'DM Sans',sans-serif;font-size:.75rem;padding:6px 8px;
-             cursor:pointer;flex-shrink:0;">
-      <option value="10">10s</option>
-      <option value="15">15s</option>
-      <option value="20" selected>20s</option>
-      <option value="30">30s</option>
-    </select>
+    
+    
     <button class="ctrl" id="btn-spacing" onclick="cycleSpacing()" title="Line spacing">≡</button>
+    <button class="ctrl" id="btn-outline" onclick="toggleOutline(event)" title="Jump to section">⊞</button>
     <button class="ctrl" id="btn-contrast" onclick="toggleContrast()" title="High contrast">◐</button>
     <button class="ctrl" id="btn-cols" onclick="toggleColumns()" title="Two columns">⫴</button>
     <div class="gap"></div>
     <button class="ctrl" onclick="xpDown()">♭</button>
-    <div id="xp-display">+0</div>
+    <div id="xp-display" title="Long-press to reset transpose for this song"></div>
     <button class="ctrl" onclick="xpUp()">♯</button>
     <button class="ctrl" id="btn-capo" onclick="toggleCapo()" title="Capo compensation">CAPO</button>
   </div>
@@ -624,10 +606,16 @@ let useCapo = localStorage.getItem('m_usecapo') !== 'false';
 const _scrollPos = new Map();
 let song = null;
 let slSongs = [];
-let slId  = null;
-let ws    = null;
+let slId      = null;
+let ws        = null;
+let _lastLiveKey = ''; // tracks last rendered setlist+index to skip redundant re-renders
 let scrollTick = null;
 let scrolling  = false;
+let _scrollRAF = null;
+let _scrollAccum = 0;
+let _scrollLastTs = 0;
+// Speed multiplier, persisted. 1.0 = baseline. Stepped 0.25–3.0.
+let scrollSpeed = parseFloat(localStorage.getItem('m_scrollspeed')) || 1.0;
 
 
 // ── Standby logo ───────────────────────────────────────────────
@@ -683,6 +671,21 @@ function selectMember(btn) {
   joinStage();
 }
 
+// ── Screen wake lock ─────────────────────────────────────────
+// Keeps the device awake while on stage. Re-acquired whenever the
+// tab becomes visible again (the lock is auto-released on hide).
+let _wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    _wakeLock = await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+  } catch { /* low battery or unsupported — non-fatal */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') requestWakeLock();
+});
+
 function boot() {
   document.getElementById('name-screen').style.display = 'none';
   applyStandbyLogo();
@@ -690,6 +693,21 @@ function boot() {
   applyMode();
   connect();
   fallbackPoll();
+  requestWakeLock();
+  setScrollSpeed(scrollSpeed);
+  document.getElementById('xp-display').textContent = '+0';
+  // Long-press transpose readout to reset for current song
+  (() => {
+    const el = document.getElementById('xp-display');
+    let t = null;
+    const start = () => { t = setTimeout(resetXp, 600); };
+    const cancel = () => { clearTimeout(t); };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('mouseleave', cancel);
+  })();
   // Check if a rehearsal is already active (e.g. joined after leader clicked Rehearse)
   fetch('/api/rehearsal').then(r => r.json()).then(state => {
     if (state.active && state.song) applyRehearsal(state.song);
@@ -703,6 +721,7 @@ function connect() {
   musicianWs = ws;
   ws.onopen  = () => {
     setDot('on');
+    document.body.classList.remove('ws-stale');
     if (name) ws.send(`name:${name}`);
     // Start clock sync immediately on connect
     syncSamples = []; _syncDone = false;
@@ -716,19 +735,7 @@ function connect() {
     if (msg.type === 'sync_reply')      handleSyncReply(msg);
     if (msg.type === 'rehearsal_update') applyRehearsal(msg.song);
     if (msg.type === 'rehearsal_stop')   clearRehearsal();
-    if (msg.type === 'metronome_start') {
-      stopMetro();
-      // Defer if sync in progress AND engine not already running correctly
-      if (syncSamples.length > 0 && (!metroOn || _serverEpochMs !== msg.server_epoch)) {
-        _pendingMetro = msg;
-      } else if (!metroOn || _serverEpochMs !== msg.server_epoch) {
-        startMetroFromEpoch(msg.bpm, msg.beats_per_bar, msg.server_epoch);
-      }
-      const secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
-      clearTimeout(metroTimeout);
-      metroTimeout = setTimeout(stopMetro, secs * 1000);
-    }
-    if (msg.type === 'metronome_stop')  stopMetro();
+
     if (msg.type === 'standby_logo_update') applyStandbyLogo();
   };
   ws.onclose = () => { setDot('warn'); musicianWs = null; setTimeout(connect, 3000); };
@@ -753,12 +760,15 @@ function setDot(s) {
   if (s === 'on') {
     d.className = 'dot on';
     // Resume audio context on reconnect in case device was sleeping
-    if (_metroAc && _metroAc.state === 'suspended') _metroAc.resume().catch(() => {});
   } else if (s === 'warn') {
     d.className = 'dot warn';
-    // Escalate to red after 5 seconds of no reconnect
+    // Escalate to red + visible stale warning after 5s of no reconnect
     _dotWarnTimer = setTimeout(() => {
       document.getElementById('dot').className = 'dot off';
+      // Only surface the stale warning if a song is actually showing
+      if (document.getElementById('app').classList.contains('content-active')) {
+        document.body.classList.add('ws-stale');
+      }
     }, 5000);
   } else {
     d.className = 'dot off';
@@ -780,6 +790,13 @@ async function fallbackPoll() {
 
 // ── Live state handler ────────────────────────────────────────
 async function applyLive(state) {
+  // Skip redundant re-renders — WS reconnects fire live_update but content hasn't changed
+  const liveKey = state.is_live
+    ? `${state.setlist_id}:${state.song_index}:${state.setlist_name}`
+    : 'standby';
+  if (liveKey === _lastLiveKey) return;
+  _lastLiveKey = liveKey;
+
   if (!state.is_live) {
     // Only reset to standby if not in rehearsal
     if (!rehearsalSong) {
@@ -789,6 +806,8 @@ async function applyLive(state) {
       document.getElementById('waiting').style.display = 'flex';
       document.getElementById('song-content').style.display = 'none';
       document.getElementById('rehear-banner').style.display = 'none';
+      const _sj = document.getElementById('section-jump');
+      if (_sj) { _sj.className = ''; _sj.innerHTML = ''; }
       document.getElementById('app').classList.remove('content-active');
       clearTimeout(_collapseTimer);
       expandControls();
@@ -829,10 +848,8 @@ async function applyLive(state) {
     if (!song || song.id !== entry.id) {
       const sr = await fetch(`/api/songs/${entry.id}`);
       song = await sr.json();
-      xp = 0;
-      document.getElementById('xp-display').textContent = '+0';
+      _restoreXpFor(song.id);
       stopScroll();
-      restartMetroIfOn();
     }
     renderSong();
     document.getElementById('song-bar').style.display = 'block';
@@ -1292,11 +1309,42 @@ function renderSong() {
   }
   el.innerHTML = twoCol ? splitToColumns(html) : html;
 
+  buildSectionJump();
+
   // Restore saved scroll position for this song (reset to 0 on first visit)
   const _cw = document.getElementById('content-wrap');
   if (_cw) requestAnimationFrame(() => {
     _cw.scrollTop = song && _scrollPos.has(song.id) ? _scrollPos.get(song.id) : 0;
   });
+}
+
+// Build a tappable outline from the rendered section headers. Tapping a
+// chip scrolls that section to the top of the viewport. Hidden when a
+// song has fewer than two real (non-repeat) section headers.
+function buildSectionJump() {
+  const bar = document.getElementById('section-jump');
+  const content = document.getElementById('song-content');
+  if (!bar || !content) return;
+  // Real headers only — skip dimmed repeat cues (.cp-section-ref)
+  const heads = [...content.querySelectorAll('.cp-section:not(.cp-section-ref) .cp-section-label')];
+  if (heads.length < 2 || twoCol) { bar.className = ''; bar.innerHTML = ''; return; }
+  bar.innerHTML = '';
+  heads.forEach((labelEl, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'sj-chip';
+    chip.textContent = labelEl.textContent;
+    chip.onclick = () => {
+      const target = labelEl.closest('.cp-section') || labelEl;
+      const wrap = document.getElementById('content-wrap');
+      const barH = bar.offsetHeight || 0;
+      wrap.scrollTo({
+        top: target.offsetTop - barH - 6,
+        behavior: 'smooth',
+      });
+    };
+    bar.appendChild(chip);
+  });
+  bar.className = 'on';
 }
 
 // ── Controls collapse / expand ───────────────────────────────
@@ -1359,6 +1407,32 @@ function xpUp()   { if (xp < 11)  xp++; updXp(); }
 function xpDown() { if (xp > -11) xp--; updXp(); }
 function updXp() {
   document.getElementById('xp-display').textContent = (xp >= 0 ? '+' : '') + xp;
+  if (song && song.id != null) {
+    const store = _loadXpStore();
+    if (xp === 0) delete store[song.id]; else store[song.id] = xp;
+    localStorage.setItem('m_song_xp', JSON.stringify(store));
+  }
+  renderSong();
+}
+
+// Per-song transpose is remembered across sessions so a chart that's
+// always played a step down comes back already transposed.
+function _loadXpStore() {
+  try { return JSON.parse(localStorage.getItem('m_song_xp') || '{}'); }
+  catch { return {}; }
+}
+function _restoreXpFor(songId) {
+  const store = _loadXpStore();
+  xp = Number.isInteger(store[songId]) ? store[songId] : 0;
+  document.getElementById('xp-display').textContent = (xp >= 0 ? '+' : '') + xp;
+}
+// Long-press the ♮ between ♭/♯ (the xp-display) to reset to 0 for this song.
+function resetXp() {
+  xp = 0;
+  const store = _loadXpStore();
+  if (song && song.id != null) delete store[song.id];
+  localStorage.setItem('m_song_xp', JSON.stringify(store));
+  document.getElementById('xp-display').textContent = '+0';
   renderSong();
 }
 
@@ -1376,27 +1450,106 @@ function applyCapoBtn() {
 
 // ── Autoscroll ────────────────────────────────────────────────
 function toggleScroll() { scrolling ? stopScroll() : startScroll(); }
+
+// Pixels per second to scroll. If the song has a duration, aim to
+// traverse the remaining content over that time; otherwise fall back
+// to a sane constant. Multiplied by the user's speed setting.
+function _scrollPxPerSec() {
+  const wrap = document.getElementById('content-wrap');
+  const remaining = wrap.scrollHeight - wrap.clientHeight;
+  let base = 37; // ~constant fallback (matches old 0.6px/16ms feel)
+  if (song && song.duration && remaining > 0) {
+    // duration is stored in seconds; leave a small tail so the last
+    // line isn't still scrolling as the song ends
+    const secs = Math.max(20, song.duration * 0.95);
+    base = remaining / secs;
+  }
+  return base * scrollSpeed;
+}
+
 function startScroll() {
   scrolling = true;
   document.getElementById('btn-scroll').classList.add('active');
   const wrap = document.getElementById('content-wrap');
-  scrollTick = setInterval(() => {
-    wrap.scrollTop += 0.6;
-    if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight) stopScroll();
-  }, 16);
+  _scrollAccum = 0;
+  _scrollLastTs = 0;
+  const step = ts => {
+    if (!scrolling) return;
+    if (!_scrollLastTs) _scrollLastTs = ts;
+    const dt = (ts - _scrollLastTs) / 1000;
+    _scrollLastTs = ts;
+    _scrollAccum += _scrollPxPerSec() * dt;
+    if (_scrollAccum >= 1) {
+      const px = Math.floor(_scrollAccum);
+      wrap.scrollTop += px;
+      _scrollAccum -= px;
+    }
+    if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 1) { stopScroll(); return; }
+    _scrollRAF = requestAnimationFrame(step);
+  };
+  _scrollRAF = requestAnimationFrame(step);
 }
 function stopScroll() {
   scrolling = false;
   document.getElementById('btn-scroll').classList.remove('active');
-  clearInterval(scrollTick);
+  if (_scrollRAF) cancelAnimationFrame(_scrollRAF);
+  _scrollRAF = null;
 }
+
+function setScrollSpeed(v) {
+  scrollSpeed = Math.min(3, Math.max(0.25, v));
+  localStorage.setItem('m_scrollspeed', scrollSpeed);
+  const lbl = document.getElementById('scroll-speed-val');
+  if (lbl) lbl.textContent = scrollSpeed.toFixed(2).replace(/0$/,'').replace(/\.$/,'') + '×';
+}
+
+// ── Section jump outline ──────────────────────────────────────
+function toggleOutline(e) {
+  if (e) e.stopPropagation();
+  const pop = document.getElementById('outline-pop');
+  if (pop.classList.contains('open')) { pop.classList.remove('open'); return; }
+
+  const labels = [...document.querySelectorAll('#song-content .cp-section-label')];
+  if (!labels.length) {
+    pop.innerHTML = '<div class="empty">No sections in this song.</div>';
+  } else {
+    pop.innerHTML = labels.map((lab, i) => {
+      lab.dataset.outlineIdx = i;
+      const txt = lab.textContent.trim();
+      return `<button onclick="jumpToSection(${i})">${escHtml(txt)}</button>`;
+    }).join('');
+  }
+  // Position above the controls bar, aligned to the button
+  const btn = document.getElementById('btn-outline');
+  const r = btn.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 180)) + 'px';
+  pop.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+  pop.style.top = 'auto';
+  pop.classList.add('open');
+}
+
+function jumpToSection(i) {
+  const el = document.querySelector(`#song-content .cp-section-label[data-outline-idx="${i}"]`);
+  if (el) {
+    stopScroll();
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  document.getElementById('outline-pop').classList.remove('open');
+}
+
+// Close the outline when tapping elsewhere
+document.addEventListener('click', e => {
+  const pop = document.getElementById('outline-pop');
+  if (!pop.classList.contains('open')) return;
+  if (e.target.closest('#outline-pop') || e.target.closest('#btn-outline')) return;
+  pop.classList.remove('open');
+});
 
 // ── Clock sync (NTP-style over WebSocket) ─────────────────────
 let clockOffset  = 0;
 let syncSamples  = [];
 let _syncDone    = false;
 let _everSynced  = false; // never reset — gates full-jump on first sync ever
-let _pendingMetro = null; // metro msg received before sync complete
 let musicianWs   = null;  // set by connect()
 
 function syncClock() {
@@ -1411,12 +1564,12 @@ function handleSyncReply(msg) {
   _lastRtt = rtt;
   const offset = msg.server - (msg.t0 + rtt / 2);
   syncSamples.push({ rtt, offset });
-  if (syncSamples.length < 16) {
-    setTimeout(syncClock, 40);
+  if (syncSamples.length < 8) {
+    setTimeout(syncClock, 20);
   } else {
-    // Discard the 8 worst RTT samples, average the best 8
+    // Discard the 4 worst RTT samples, average the best 4
     syncSamples.sort((a, b) => a.rtt - b.rtt);
-    const good = syncSamples.slice(0, 8);
+    const good = syncSamples.slice(0, 4);
     const newOffset = good.reduce((s, x) => s + x.offset, 0) / good.length;
     // Smooth large jumps — never move the offset by more than 20ms at once
     // to avoid sudden phase jumps mid-performance
@@ -1427,17 +1580,7 @@ function handleSyncReply(msg) {
     _syncDone = true;
     _everSynced = true;
     syncSamples = [];
-    // Fire any metro start that arrived before sync was ready
-    if (_pendingMetro) {
-      const m = _pendingMetro; _pendingMetro = null;
-      // Only start if not already running with same epoch
-      if (!metroOn || _serverEpochMs !== m.server_epoch) {
-        startMetroFromEpoch(m.bpm, m.beats_per_bar, m.server_epoch);
-      }
-      const _secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
-      clearTimeout(metroTimeout);
-      metroTimeout = setTimeout(stopMetro, _secs * 1000);
-    }
+
   }
 }
 
@@ -1470,46 +1613,35 @@ function _debugLoop() {
 function _debugRender() {
   const el = document.getElementById('debug-overlay');
   if (!el) return;
-  const ws    = typeof musicianWs !== 'undefined' ? musicianWs : null;
+  const ws     = typeof musicianWs !== 'undefined' ? musicianWs : null;
   const wsState = ['CONNECTING','OPEN','CLOSING','CLOSED'];
-  const wsOk  = ws && ws.readyState === 1;
-  const wsSince = _lastWsMsgMs ? Math.round((Date.now() - _lastWsMsgMs) / 100) / 10 + 's ago' : 'never';
-  const acTime = (typeof _metroAc !== 'undefined' && _metroAc) ? _metroAc.currentTime.toFixed(3) : 'n/a';
-  const wallSec = Date.now() / 1000;
-  const acDrift = (typeof _metroAc !== 'undefined' && _metroAc)
-    ? ((parseFloat(acTime) - (wallSec + (typeof clockOffset !== 'undefined' ? clockOffset/1000 : 0))).toFixed(3) + 's')
-    : 'n/a';
-  const epochAge = (typeof _serverEpochMs !== 'undefined' && _serverEpochMs)
-    ? (((Date.now() - (_serverEpochMs - (typeof clockOffset !== 'undefined' ? clockOffset : 0))) / 1000).toFixed(1) + 's')
-    : 'n/a';
-  const beat = typeof _lastBeat !== 'undefined' ? _lastBeat : 'n/a';
-  const bar  = typeof metroBar  !== 'undefined' ? metroBar  : 'n/a';
-  const bpm  = typeof metroBpm  !== 'undefined' ? metroBpm  : 'n/a';
-  const offset = typeof clockOffset !== 'undefined' ? clockOffset.toFixed(1) + 'ms' : 'n/a';
-  const synced = typeof _syncDone   !== 'undefined' ? _syncDone : 'n/a';
-  const warm   = typeof _metroWarmup !== 'undefined' ? _metroWarmup : 'n/a';
-  const pending = typeof _pendingMetro !== 'undefined' && _pendingMetro ? 'YES' : 'no';
+  const wsOk   = ws && ws.readyState === 1;
+  const wsSince = _lastWsMsgMs ? (Math.round((Date.now()-_lastWsMsgMs)/100)/10)+'s ago' : 'never';
+  const offset  = typeof clockOffset !== 'undefined' ? clockOffset.toFixed(1)+'ms' : 'n/a';
+  const synced  = typeof _syncDone !== 'undefined' ? String(_syncDone) : 'n/a';
+  const mOn     = typeof metroOn  !== 'undefined' ? String(metroOn)  : 'n/a';
+  const bpm     = typeof metroBpm !== 'undefined' ? metroBpm : 'n/a';
+  const bar     = typeof metroBar !== 'undefined' ? metroBar : 'n/a';
+  const beat    = typeof _lastBeat !== 'undefined' ? _lastBeat : 'n/a';
+  const warm    = 'n/a'; // musician has no metronome
+  const rtt     = _lastRtt ? _lastRtt+'ms' : 'n/a';
 
-  const c = (val, ok, warn) => {
-    if (val === ok || val === true) return `<span class="db-ok">${val}</span>`;
-    if (val === warn) return `<span class="db-warn">${val}</span>`;
-    return `<span class="db-err">${val}</span>`;
-  };
+  const c = (v, okV) => v===okV||v==='true'
+    ? `<span class="db-ok">${v}</span>`
+    : v==='n/a'||v==='false'||v==='null'
+      ? `<span class="db-warn">${v}</span>`
+      : `<span class="db-err">${v}</span>`;
 
-  el.innerHTML = `
-<div class="db-head">DEBUG — MUSICIAN</div>
-<div>WS: ${c(wsOk ? 'OPEN' : (ws ? wsState[ws.readyState] : 'null'), 'OPEN', 'CONNECTING')}</div>
-<div>Last msg: ${wsSince}</div>
-<div>Clock offset: ${offset}</div>
-<div>Last RTT: ${_lastRtt ? _lastRtt + 'ms' : 'n/a'}</div>
-<div>Sync done: ${c(String(synced), 'true', 'n/a')}</div>
-<div>Metro: ${c(String(typeof metroOn !== 'undefined' ? metroOn : 'n/a'), 'true', 'n/a')} ${bpm}bpm ${bar}/bar</div>
-<div>Beat: ${beat} | Warmup: ${warm} | Pending: ${pending}</div>
-<div>Epoch age: ${epochAge}</div>
-<div>AC time: ${acTime}</div>
-<div>AC drift: ${acDrift}</div>
-
-  `.trim();
+  el.innerHTML = [
+    '<div class="db-head">DEBUG — MUSICIAN</div>',
+    `<div>WS: ${c(wsOk?'OPEN':(ws?wsState[ws.readyState]:'null'),'OPEN')}</div>`,
+    `<div>Last msg: ${wsSince}</div>`,
+    `<div>Clock offset: ${offset}</div>`,
+    `<div>RTT: ${rtt}</div>`,
+    `<div>Sync: ${c(synced,'true')}</div>`,
+    `<div>Metro: ${c(mOn,'true')} ${bpm} BPM ${bar}/bar</div>`,
+    `<div>Beat: ${beat} | Warmup: ${warm}</div>`,
+  ].join('');
 }
 
 if (_debugOn) { document.addEventListener('DOMContentLoaded', () => {
@@ -1521,182 +1653,21 @@ if (_debugOn) { document.addEventListener('DOMContentLoaded', () => {
 // clockOffset rather than being fixed at start time. This corrects for both
 // NTP drift and audio/wall-clock divergence continuously.
 
-let metroOn         = false;
-let metroBpm        = 0;
-let metroBar        = 4;
-let _metroAc        = null;
-let _metroST        = null;
 let _lastBeat       = -1;
-let _serverEpochMs  = 0;
-const _LOOKAHEAD    = 0.200;   // seconds ahead to schedule (larger = more robust to throttling)
-const _SCHEDULE_MS  = 25;      // target scheduler interval in ms
-
-function _getAc() {
-  if (!_metroAc) {
-    try { _metroAc = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-  }
-  if (_metroAc && _metroAc.state === 'suspended') {
-    _metroAc.resume().catch(() => {});
-  }
-  // Return the context even if still resuming — currentTime will be 0 briefly
-  // but _audioEpochNow recalibrates every tick so phase stays correct once running
-  return _metroAc || null;
-}
-
-function _audioEpochNow(ac) {
-  // Recompute beat-0 audio time fresh every tick using current clockOffset.
-  // Wall-clock time of beat 0 = _serverEpochMs - clockOffset (ms)
-  // Audio-clock offset from wall = ac.currentTime - Date.now()/1000
-  return (_serverEpochMs - clockOffset) / 1000 + (ac.currentTime - Date.now() / 1000);
-}
-
-function _metroScheduler() {
-  if (!metroOn) return;
-  const ac = _getAc();
-  if (!ac || ac.currentTime < 0.001) {
-    _metroFallback();
-    _metroST = setTimeout(_metroScheduler, _SCHEDULE_MS);
-    return;
-  }
-  const beatSec    = 60 / metroBpm;
-  const nowAudio   = ac.currentTime;
-  const audioEpoch = _audioEpochNow(ac);
-  const horizon    = nowAudio + _LOOKAHEAD;
-  let beat = Math.max(0, Math.floor((nowAudio - audioEpoch) / beatSec));
-  while (true) {
-    const beatTime = audioEpoch + beat * beatSec;
-    if (beatTime > horizon) break;
-    if (beat > _lastBeat) {
-      _lastBeat = beat;
-      const isDown  = (beat % metroBar + metroBar) % metroBar === 0;
-      const delayMs = Math.max(0, (beatTime - nowAudio) * 1000);
-      const _beat = beat; setTimeout(() => { if (metroOn) _fireFlash(isDown, _beat); }, delayMs);
-    }
-    beat++;
-  }
-  // Self-reschedule anchored to audio clock rather than wall clock.
-  // Calculate how long until the lookahead window needs refilling,
-  // then schedule the next tick just before that — typically ~25ms.
-  const nextBeatTime = audioEpoch + (Math.floor((nowAudio - audioEpoch) / beatSec) + 1) * beatSec;
-  const msUntilNextBeat = Math.max(1, (nextBeatTime - nowAudio - _LOOKAHEAD * 0.5) * 1000);
-  const nextTick = Math.min(_SCHEDULE_MS, msUntilNextBeat);
-  _metroST = setTimeout(_metroScheduler, nextTick);
-}
-
-function _metroFallback() {
-  const beatMs     = 60000 / metroBpm;
-  const localEpoch = _serverEpochMs - clockOffset;
-  const beat       = Math.max(0, Math.floor((Date.now() - localEpoch) / beatMs));
-  if (beat > _lastBeat) {
-    _lastBeat = beat;
-    _fireFlash((beat % metroBar + metroBar) % metroBar === 0, beat);
-  }
-}
-
-function _startMetroEngine(bpm, bar, serverEpochMs) {
-  _stopMetroEngine();
-  metroBpm       = bpm;
-  metroBar       = bar || 4;
-  _serverEpochMs = serverEpochMs;
-  metroOn        = true;
-  _lastBeat      = -1;
-  _getAc();  // prime the context before first beat
-  _metroScheduler(); // first tick immediately; subsequent ticks self-schedule
-}
-
-function _stopMetroEngine() {
-  metroOn = false;
-  clearTimeout(_metroST);
-  _metroST  = null;
-  _lastBeat = -1;
-  const f  = document.getElementById('metro-flash');
-  if (f) f.classList.remove('beat', 'downbeat');
-  const gr = document.getElementById('metro-getready');
-  if (gr) gr.style.display = 'none';
-}
-
-let _metroWarmup = false;
-
-function _fireFlash(isDown, beatNum) {
-  if (_metroWarmup) return;
-  const el  = document.getElementById('metro-flash');
-  const num = document.getElementById('metro-num');
-  if (!el) return;
-  const beatMs    = 60000 / (metroBpm || 120);
-  const beatInBar = ((beatNum || 0) % metroBar) + 1;
-  if (num) num.textContent = beatInBar;
-  el.classList.toggle('downbeat', isDown);
-  el.classList.add('beat');
-  const holdMs = isDown ? Math.min(140, beatMs * 0.22) : Math.min(90, beatMs * 0.14);
-  setTimeout(() => el.classList.remove('beat', 'downbeat'), holdMs);
-}
-
-['click','touchstart','keydown'].forEach(ev =>
-  document.addEventListener(ev, () => {
-    if (_metroAc) _metroAc.resume().catch(() => {});
-  }, { passive: true }));
-
-function startMetroFromEpoch(bpm, beatsPerBar, serverEpochMs) {
-  const grEl  = document.getElementById('metro-getready');
-  const bpmEl = document.getElementById('gr-bpm-display');
-  _metroWarmup = true;
-  _startMetroEngine(bpm, beatsPerBar, serverEpochMs);
-  // Show GET READY after engine starts (so _stopMetroEngine inside doesn't hide it)
-  if (grEl) {
-    grEl.style.display = 'flex';
-    if (bpmEl) bpmEl.textContent = bpm + ' BPM';
-  }
-  // End warmup at beat boundary so all devices unsuppress on the same beat,
-  // regardless of when each device received the WS message.
-  // Wait for beatsPerBar beats from epoch, minimum 1 full bar.
-  const beatMs = 60000 / bpm;
-  const bar    = beatsPerBar || 4;
-  const now    = Date.now();
-  const localEpoch = serverEpochMs - clockOffset;
-  const beatsElapsed = Math.max(0, (now - localEpoch) / beatMs);
-  // Next bar boundary at or after (bar) beats from now
-  const nextBarBeat = (Math.floor(beatsElapsed / bar) + 1) * bar;
-  const warmupMs    = Math.max(800, (nextBarBeat - beatsElapsed) * beatMs);
-  setTimeout(() => {
-    _metroWarmup = false;
-    if (grEl) grEl.style.display = 'none';
-  }, warmupMs);
-  document.getElementById('btn-metro').classList.add('active');
-  document.getElementById('metro-bpm-sub').textContent = `${bpm} bpm`;
-}
 
 
-let metroTimeout = null;
 
-function startMetro() {
-  const bpm = song?.tempo;
-  const btn = document.getElementById('btn-metro');
-  if (!bpm || bpm < 20 || bpm > 300) {
-    btn.style.borderColor = 'var(--red)';
-    setTimeout(() => btn.style.borderColor = '', 800);
-    document.getElementById('metro-bpm-sub').textContent = 'no BPM';
-    return;
-  }
-  startMetroFromEpoch(bpm, 4, serverNow());
-  const secs = parseInt(document.getElementById('metro-timeout-sel').value) || 20;
-  clearTimeout(metroTimeout);
-  metroTimeout = setTimeout(stopMetro, secs * 1000);
-}
 
-function stopMetro() {
-  _metroWarmup = false;
-  _stopMetroEngine();
-  clearTimeout(metroTimeout);
-  document.getElementById('btn-metro').classList.remove('active');
-  document.getElementById('metro-bpm-sub').textContent = '';
-}
 
-function toggleMetro() { metroOn ? stopMetro() : startMetro(); }
-function restartMetroIfOn() {
-  if (!metroOn) return;
-  stopMetro();
-  startMetro();
-}
+
+
+
+
+
+
+
+
+
 
 // ── Rehearsal ────────────────────────────────────────────────
 let rehearsalSong = null;
@@ -1704,10 +1675,8 @@ let rehearsalSong = null;
 function applyRehearsal(s) {
   rehearsalSong = s;
   song = s;  // reuse the same song object so controls (transpose, metro) work
-  xp   = 0;
-  document.getElementById('xp-display').textContent = '+0';
+  _restoreXpFor(s && s.id);
   stopScroll();
-  restartMetroIfOn();
 
   // Show banner and song content; hide standby if not live
   document.getElementById('rehear-banner').style.display = 'block';
