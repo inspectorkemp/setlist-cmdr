@@ -1085,6 +1085,7 @@ monitor_config = _load_state("monitor_config", {
 async def set_metro_stub():
     return {"ok": True}
 
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     import time, json
@@ -1093,9 +1094,8 @@ async def ws_endpoint(websocket: WebSocket):
     # Send current rehearsal state to newly connected client
     if rehearsal_state["active"] and rehearsal_state["song"]:
         await websocket.send_json({"type": "rehearsal_update", "song": rehearsal_state["song"]})
-    # Send current metro state to newly connected client
-    if metro_state["on"]:
-        await websocket.send_json({"type": "metronome_start", **metro_state})
+    # Metro state is not sent on reconnect — count-in is a one-shot action
+    # triggered explicitly by the leader, not a persistent state to restore.
     # Send current monitor config on connect
     await websocket.send_json({"type": "monitor_config", **monitor_config})
     await manager.broadcast_roster()
@@ -1115,14 +1115,14 @@ async def ws_endpoint(websocket: WebSocket):
                             "server":  server_now,
                         })
                     elif msg.get("type") == "metronome_start":
-                        # Leader broadcasting start to all musicians
                         metro_state.update({
                             "on":            True,
                             "bpm":           msg["bpm"],
                             "beats_per_bar": msg.get("beats_per_bar", 4),
-                            "server_epoch":  msg["server_epoch"],
+                            "server_epoch":  msg.get("server_epoch", time.time() * 1000),
                         })
                         _save_state("metro_state", metro_state)
+                        # Broadcast to all — monitor will flash, others ignore
                         await manager.broadcast({
                             "type":         "metronome_start",
                             "bpm":          metro_state["bpm"],
