@@ -127,9 +127,8 @@ The monitor at /monitor shows the song title, key, BPM, and time signature in la
 
 **Configuring it — three ways without touching the TV:**
 
-1. Scan the QR code on the standby screen and adjust settings on your phone
-2. Open Settings in the leader nav bar and use the Confidence Monitor section
-3. Open http://your-ip:8000/monitor/setup directly
+1. Open Settings in the leader nav bar and use the Confidence Monitor section
+2. Open http://your-ip:8000/monitor/setup directly
 
 **Available settings:** view mode (Chords, Lyrics, Consol, Melody), two columns, fit mode, high contrast, capo compensation, font scale, portrait (hardware rotation), rotate 90 degrees (software rotation)
 
