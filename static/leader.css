@@ -291,8 +291,9 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .ctrl-bar-btn {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
   color: var(--text); cursor: pointer; font-family: var(--body);
-  font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.07em; text-transform: uppercase;
-  padding: clamp(6px,.8vh,9px) clamp(10px,1.5vw,14px);
+  font-weight: 700; font-size: var(--fs-md); letter-spacing: 0.07em; text-transform: uppercase;
+  min-height: 40px;
+  padding: clamp(8px,1vh,11px) clamp(12px,1.6vw,16px);
   transition: .15s; white-space: nowrap; flex-shrink: 0;
   display: inline-flex; align-items: center; gap: 5px;
 }
@@ -301,7 +302,7 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .ctrl-bar-btn.danger { background: transparent; border-color: var(--red); color: var(--red); }
 .ctrl-bar-btn.danger:hover { background: var(--red); color: #fff; }
 .bpm-sub { font-family: var(--mono); font-size: 10px; opacity: .7; letter-spacing: 0; text-transform: none; }
-body[data-mode="ipad"] .ctrl-bar-btn { min-height: 42px; padding: 8px 14px; font-size: var(--fs-md); }
+body[data-mode="ipad"] .ctrl-bar-btn { min-height: 52px; padding: 13px 22px; font-size: 1.12rem; }
 
 /* ── Signal bar ──────────────────────────────────────────────── */
 #signal-bar {
@@ -315,9 +316,9 @@ body[data-mode="ipad"] .ctrl-bar-btn { min-height: 42px; padding: 8px 14px; font
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   color: var(--dim); cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 5px;
-  flex: 1; min-width: 64px; padding: 7px 6px;
+  flex: 1; min-width: 64px; min-height: 40px; padding: 9px 6px;
   font-family: var(--display); font-weight: var(--display-weight);
-  font-size: var(--fs-sm); letter-spacing: var(--display-tracking); text-transform: uppercase;
+  font-size: var(--fs-md); letter-spacing: var(--display-tracking); text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: .15s;
 }
 .sig-btn:hover { border-color: var(--amber); color: var(--text); background: var(--amber-bg); }
@@ -325,7 +326,7 @@ body[data-mode="ipad"] .ctrl-bar-btn { min-height: 42px; padding: 8px 14px; font
 .sig-label { overflow: hidden; text-overflow: ellipsis; }
 .sig-edit-toggle { background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--dim); cursor: pointer; padding: 6px 10px; font-size: var(--fs-sm); flex-shrink: 0; transition: .15s; }
 .sig-edit-toggle:hover { color: var(--amber); border-color: var(--amber); }
-body[data-mode="ipad"] .sig-btn { min-height: 40px; font-size: var(--fs-md); }
+body[data-mode="ipad"] .sig-btn { min-height: 50px; padding: 11px 8px; font-size: 1.08rem; }
 
 /* ── Song title bar ──────────────────────────────────────────── */
 #l-song-bar {
@@ -361,13 +362,14 @@ body[data-mode="ipad"] .sig-btn { min-height: 40px; font-size: var(--fs-md); }
 .l-ctrl {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
   color: var(--text); cursor: pointer; font-family: var(--body);
-  font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
-  padding: clamp(5px,.7vh,8px) clamp(8px,1.2vw,12px); transition: .15s; white-space: nowrap; flex-shrink: 0;
+  font-size: var(--fs-md); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  min-height: 40px;
+  padding: clamp(8px,1vh,11px) clamp(11px,1.5vw,15px); transition: .15s; white-space: nowrap; flex-shrink: 0;
 }
 .l-ctrl:hover  { background: var(--border); color: var(--amber); }
 .l-ctrl.active { background: var(--amber); border-color: var(--amber); color: #000; }
 #l-xp-display { font-family: var(--mono); font-size: var(--fs-sm); color: var(--amber); min-width: 32px; text-align: center; letter-spacing: 0.06em; }
-body[data-mode="ipad"] .l-ctrl { min-height: 42px; padding: 8px 14px; font-size: var(--fs-md); }
+body[data-mode="ipad"] .l-ctrl { min-height: 52px; padding: 13px 22px; font-size: 1.12rem; }
 
 .font-size-ctrl { display: flex; align-items: center; gap: 8px; padding: 0 6px; }
 .font-size-lbl { color: var(--dim); font-size: var(--fs-xs); }
@@ -517,20 +519,20 @@ body[data-mode="ipad"] #l-font-slider::-webkit-slider-thumb, body[data-mode="ipa
    COMPACT STAGE MODE
    ══════════════════════════════════════════════════════════════ */
 #live-panel.compact #leader-ctrl-bar { padding: 3px var(--sp-sm); }
-#live-panel.compact .ctrl-bar-btn    { padding: 4px 8px; font-size: .72rem; }
+#live-panel.compact .ctrl-bar-btn    { min-height: 32px; padding: 4px 8px; font-size: .72rem; }
 #live-panel.compact #l-song-bar      { padding: 4px var(--sp-sm); }
 #live-panel.compact #l-song-title    { font-size: clamp(1rem, 3vw, 1.6rem); }
 #live-panel.compact #l-song-meta     { display: none; }
 #live-panel.compact #l-next-bar      { padding: 2px var(--sp-sm); font-size: .65rem; }
 #live-panel.compact #l-controls      { padding: 3px var(--sp-sm); gap: 4px; }
-#live-panel.compact .l-ctrl          { padding: 5px 9px; font-size: .75rem; }
+#live-panel.compact .l-ctrl          { min-height: 32px; padding: 5px 9px; font-size: .75rem; }
 #live-panel.compact #l-xp-display    { font-size: .78rem; }
 #live-panel.compact #signal-bar      { padding: 3px var(--sp-sm); gap: 4px; }
-#live-panel.compact .sig-btn         { padding: 3px 8px; font-size: .7rem; min-width: 56px; }
+#live-panel.compact .sig-btn         { min-height: 32px; padding: 3px 8px; font-size: .7rem; min-width: 56px; }
 #live-panel.compact .sig-key         { font-size: .55rem; }
-body[data-mode="ipad"] #live-panel.compact .ctrl-bar-btn { min-height: 36px; padding: 5px 10px; font-size: .82rem; }
-body[data-mode="ipad"] #live-panel.compact .l-ctrl        { min-height: 40px; padding: 7px 12px; font-size: .85rem; }
-body[data-mode="ipad"] #live-panel.compact .sig-btn        { min-height: 40px; padding: 5px 10px; }
+body[data-mode="ipad"] #live-panel.compact .ctrl-bar-btn { min-height: 44px; padding: 8px 14px; font-size: .92rem; }
+body[data-mode="ipad"] #live-panel.compact .l-ctrl        { min-height: 44px; padding: 9px 14px; font-size: .92rem; }
+body[data-mode="ipad"] #live-panel.compact .sig-btn        { min-height: 44px; padding: 8px 10px; font-size: .9rem; }
 body[data-mode="ipad"] #live-panel.compact #l-song-title   { font-size: clamp(1.4rem, 4vw, 2.4rem); }
 
 /* ══════════════════════════════════════════════════════════════
