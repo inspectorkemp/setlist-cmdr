@@ -40,15 +40,17 @@ Full-screen display for a floor wedge or large TV. Tracks the leader scroll posi
 
 ## Song library
 
-Each song stores: title, artist, key, capo, time signature, tempo, duration, status, lyrics, chords (ChordPro), and notes.
+Each song stores: title, artist, key, capo, time signature, tempo, duration, status, a combined Lyrics & Chords field (ChordPro), and notes.
 
-**Status levels:** Active, Needs Work, Maybe, Retired. Search by title or artist, filter by status.
+**Status levels:** Active, Needs Work, Maybe, Retired. Search matches title, artist, lyrics, and chords. Filter by status.
 
 **Capo** is a first-class field. Chord displays show fingered shapes adjusted for the capo position. Each device has a CAPO toggle to turn this off for players who are not using one.
 
 **Time signature** options are 4/4, 3/4, 2/4, 5/4, 6/8, and 12/8. The metronome uses the correct beats per bar for each song automatically.
 
-**ChordPro format** stores chord names inline with lyrics using square brackets. The song editor includes a fullscreen split editor with live preview, a chord insert toolbar, and a Convert tool that accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets.
+**ChordPro format** stores chord names inline with lyrics using square brackets, in a single combined Lyrics & Chords field — paste a whole chart in at once rather than filling separate boxes. The song editor includes a fullscreen split editor with live preview, a chord insert toolbar, and a Convert tool that accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets.
+
+**Standard ChordPro directives** are also recognized, so charts written for other ChordPro tools render correctly. Curly-brace section directives (`{start_of_chorus}` / `{soc}`, `{start_of_verse}`, `{start_of_bridge}`, with optional labels like `{start_of_verse: Verse 2}`) are treated the same as the bracket sections below; matching `{end_of_...}` markers are recognized. Inline annotations — `{comment: ...}` (and `{c:}`, `{ci:}` italic, `{cb:}` boxed) — render as highlighted cue lines in the chart on every screen. Metadata directives (`{title}`, `{artist}`, `{key}`, `{tempo}`, `{capo}`, `{time}`, `{duration}`) are pulled into the matching song fields automatically when a file is imported.
 
 **Section markers** use the same bracket syntax as chords. Any token that is not a chord name becomes a section header: [Verse 1], [Chorus], [Bridge], etc. Section headers appear in all view modes including Lyrics. A bare repeat reference like a second [Chorus] with no following content renders as a dimmed cue rather than duplicating the text.
 
@@ -84,7 +86,7 @@ The view mode button on each device cycles through four options:
 
 ## Setlists
 
-Create multiple setlists, add songs from the library, drag to reorder, and insert section labels between songs. Running duration updates as you build. Clone any setlist as a starting point. Active and Inactive toggle lets you hide setlists you are not currently using.
+Create multiple setlists, add songs from the library, reorder by dragging (works with touch on an iPad), and insert section labels between songs. Songs within a setlist can also be reordered with up/down buttons. Running duration updates as you build. Clone any setlist as a starting point. Active and Inactive toggle lets you hide setlists you are not currently using.
 
 To add a song to the current setlist without leaving the Songs tab, click the + Set button on any song card.
 
@@ -111,7 +113,7 @@ Click Rehearse on any song in the Songs tab to push it to all musician screens w
 
 The leader starts the metronome and all connected devices flash in phase. When it starts, a GET READY overlay appears while the clock sync settles. After one full bar, beat numbers pulse on screen on every device simultaneously. Beat 1 is brighter. Time signature is read from the current song — 3/4 cycles 1-2-3 and 6/8 cycles 1-2-3-4-5-6.
 
-Auto-stops after a configurable timeout of 10, 15, 20, or 30 seconds.
+Auto-stops after a configurable timeout of 5, 7, or 10 seconds.
 
 ---
 
@@ -127,8 +129,9 @@ The monitor at /monitor shows the song title, key, BPM, and time signature in la
 
 **Configuring it — three ways without touching the TV:**
 
-1. Open Settings in the leader nav bar and use the Confidence Monitor section
-2. Open http://your-ip:8000/monitor/setup directly
+1. Scan the QR code on the standby screen and adjust settings on your phone
+2. Open Settings in the leader nav bar and use the Confidence Monitor section
+3. Open http://your-ip:8000/monitor/setup directly
 
 **Available settings:** view mode (Chords, Lyrics, Consol, Melody), two columns, fit mode, high contrast, capo compensation, font scale, portrait (hardware rotation), rotate 90 degrees (software rotation)
 
@@ -146,11 +149,11 @@ The monitor at /monitor shows the song title, key, BPM, and time signature in la
 
 ## Importing songs
 
-**Single file:** Click Import in the Songs toolbar. Supported: .pdf (born-digital only), .txt, .chopro, .cho, .crd, .chordpro, .pro, .onsong. A review modal opens before the song is created.
+**Single file:** Click Import in the Songs toolbar. Supported: .pdf (born-digital only), .txt, .chopro, .cho, .crd, .chordpro, and .pro. A review modal opens before the song is created, showing any ChordPro metadata it detected.
 
 **Batch import:** Click Batch and select a zip file. Every supported file in the zip imports directly with duplicate detection. A results panel shows what was imported and what was skipped.
 
-**From OnSong:** Export your library from OnSong as ChordPro or OnSong text files (use OnSong Console for bulk export), zip them, and use Batch import. Song text, chords, title, artist, key, capo, and tempo transfer correctly. Annotations, audio, and image-based charts do not.
+**From OnSong:** Export your library from OnSong as ChordPro or OnSong text files (use OnSong Console for bulk export), zip them, and use Batch import. Song text, chords, title, artist, key, capo, tempo, time signature, and duration transfer correctly (the latter two when present as ChordPro metadata). Annotations, audio, and image-based charts do not.
 
 The OnSong Archive format (.archive or .onsongarchive) is proprietary and cannot be imported.
 
@@ -200,13 +203,13 @@ The monitor Pi needs no server. It just opens a browser pointed at the main Pi.
 
 ## First login and PIN
 
-The default leader PIN is 1234. After logging in, go to Settings and set a new PIN. Sessions last 24 hours.
+The default leader PIN is 1234. While it is still set to the default, a reminder appears after login prompting you to change it. Go to Settings and set a new PIN. Sessions last 24 hours.
 
 ---
 
 ## Band member roster
 
-Add band member names in the Crew modal. Names appear as tap-to-join buttons on the musician name screen.
+Add band member names in the Crew modal, and reorder them with up/down buttons. Names appear as tap-to-join buttons on the musician name screen.
 
 ---
 
@@ -305,6 +308,25 @@ Section markers use the same brackets. Any token that is not a valid chord name 
 The second bare [Chorus] renders as a dimmed repeat cue pointing back to the first occurrence.
 
 The Convert tool in the fullscreen editor accepts chords-above-lyrics format and maps chord positions to lyric text automatically.
+
+**Standard ChordPro directives** are accepted alongside the bracket syntax, so files written for other ChordPro software render correctly:
+
+```
+{title: Here Comes the Sun}
+{key: A}
+{tempo: 129}
+
+{start_of_verse: Verse 1}
+{comment: light, picking}
+[A]Here comes the [E]sun
+{end_of_verse}
+
+{soc}
+[A]Here comes the [E]sun
+{eoc}
+```
+
+On import, the metadata directives (`{title}`, `{artist}`, `{key}`, `{tempo}`, `{capo}`, `{time}`, `{duration}`) populate the song fields. `{start_of_...}` / `{end_of_...}` sections become bracket sections, and `{comment}` lines (and the `{c}`, `{ci}`, `{cb}` variants) display as highlighted cues in the chart.
 
 ---
 
