@@ -891,20 +891,13 @@ Here comes the sun…"></textarea>
     </div>
     <div style="padding:12px 22px;border-bottom:1px solid var(--border);
          display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-      <div style="font-size:.75rem;color:var(--dim);">Place text in:</div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;">
-        <input type="radio" name="import-dest" value="chords" checked id="import-dest-chords">
-        Chords field
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;">
-        <input type="radio" name="import-dest" value="lyrics" id="import-dest-lyrics">
-        Lyrics field
-      </label>
+      <div style="font-size:.75rem;color:var(--dim);">Imported text goes into the combined Lyrics &amp; Chords field — you can tidy it after.</div>
       <div id="import-chordpro-badge"
            style="display:none;background:var(--amber-glow);border:1px solid var(--amber);
                   border-radius:6px;padding:2px 10px;font-size:.72rem;color:var(--amber);">
         ChordPro detected
       </div>
+      <div id="import-detected-meta" style="font-size:.72rem;color:var(--dim);"></div>
     </div>
     <div style="padding:12px 22px;border-bottom:1px solid var(--border);">
       <div style="font-size:.7rem;color:var(--dim);text-transform:uppercase;
@@ -1071,19 +1064,15 @@ Here comes the sun…"></textarea>
         </div>
       </div>
       <div class="form-group">
-        <label>Lyrics <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(plain text)</span></label>
-        <textarea id="f-lyrics" placeholder="Paste or type lyrics here…" style="min-height:160px;"></textarea>
-      </div>
-      <div class="form-group">
         <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">
-          <label style="margin-bottom:0;">Chords <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(ChordPro — use [C], [Am7], etc. inline)</span></label>
+          <label style="margin-bottom:0;">Lyrics &amp; Chords <span style="text-transform:none;font-size:.7rem;color:var(--dim);">(ChordPro — put chords inline as [C], [Am7], etc.)</span></label>
           <button type="button" class="btn" onclick="openChordEditor()"
                   style="padding:3px 10px;font-size:.72rem;flex-shrink:0;">
             ⛶ Full Editor
           </button>
         </div>
-        <textarea id="f-chords" placeholder="[G]Here comes the [Em]sun [C]doo doo doo [D]doo&#10;[G]Here comes the [Em]sun [C]and I say [D]it's alright" style="min-height:160px;"></textarea>
-        <div class="hint">Use [Chord] for chords, [Verse 1] / [Chorus] / [Bridge] etc. for section markers. A bare [Chorus] with no following lines repeats the section.</div>
+        <textarea id="f-chords" placeholder="[G]Here comes the [Em]sun [C]doo doo doo [D]doo&#10;[G]Here comes the [Em]sun [C]and I say [D]it's alright&#10;&#10;Paste lyrics with chords in brackets, or just lyrics on their own." style="min-height:300px;"></textarea>
+        <div class="hint">Put chords inline in [brackets]; everything else is treated as lyrics. Use [Verse 1] / [Chorus] / [Bridge] etc. for section markers — a bare [Chorus] with no following lines repeats that section. Musicians can toggle a lyrics-only view on their own screens.</div>
       </div>
       <div class="form-group">
         <label>Notes / Cues</label>
@@ -1429,6 +1418,46 @@ function convertToChordPro(text) {
   return output.join('\n').trim();
 }
 
+// Derive a plain-lyrics version from ChordPro source: drop every
+// [bracketed] token (chords and section markers) and tidy whitespace.
+// Stored alongside the ChordPro so search and lyrics-only fallbacks keep
+// working without a second input field.
+// Pull standard ChordPro metadata directives ({title}, {key}, {tempo}, etc.)
+// out of a pasted/imported file. Returns the recognized fields plus the body
+// with those metadata lines removed (section + comment directives are kept).
+function extractChordProMetadata(src) {
+  const meta = {};
+  const body = [];
+  const NAME = {
+    t:'title', title:'title', st:'subtitle', subtitle:'subtitle',
+    artist:'artist', composer:'composer', album:'album', year:'year',
+    key:'key', time:'time', tempo:'tempo', capo:'capo', duration:'duration',
+  };
+  const reDir = /^\{\s*([a-z_]+)\s*:\s*([\s\S]*?)\s*\}$/i;
+  for (const rawLine of (src || '').split('\n')) {
+    const line = rawLine.trim();
+    const m = line.match(reDir);
+    if (m) {
+      const field = NAME[m[1].toLowerCase()];
+      if (field) { if (!(field in meta)) meta[field] = m[2].trim(); continue; }
+    }
+    body.push(rawLine);
+  }
+  return { meta, body: body.join('\n').trim() };
+}
+
+function stripChordPro(src) {
+  if (!src) return null;
+  const out = src
+    .replace(/\[[^\]]*\]/g, '')      // remove [chords] and [Section] markers
+    .split('\n')
+    .map(l => l.replace(/[ \t]+/g, ' ').trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')      // collapse runs of blank lines
+    .trim();
+  return out || null;
+}
+
 function openChordEditor() {
   const overlay = document.getElementById('chord-editor-overlay');
   // Copy current textarea content into the editor
@@ -1509,8 +1538,9 @@ function openSongModal(id) {
   document.getElementById('f-timesig').value  = s?.time_sig || '4/4';
   document.getElementById('f-duration').value = s?.duration ? fmtDur(s.duration) : '';
   document.getElementById('f-status').value   = s?.status   || 'active';
-  document.getElementById('f-lyrics').value   = s?.lyrics   || '';
-  document.getElementById('f-chords').value   = s?.chords   || '';
+  // Combined ChordPro field. Legacy songs that only have a plain-lyrics
+  // value (no chords) load their lyrics here so nothing is lost.
+  document.getElementById('f-chords').value   = s?.chords || s?.lyrics || '';
   document.getElementById('f-notes').value    = s?.notes    || '';
   document.getElementById('delete-song-btn').style.display = id ? '' : 'none';
   document.getElementById('modal-overlay').classList.add('open');
@@ -1530,8 +1560,8 @@ async function saveSong() {
     time_sig: document.getElementById('f-timesig').value || '4/4',
     tempo:    parseInt(document.getElementById('f-tempo').value)  || null,
     duration: parseDur(document.getElementById('f-duration').value),
-    lyrics:   document.getElementById('f-lyrics').value.trim()   || null,
     chords:   document.getElementById('f-chords').value.trim()   || null,
+    lyrics:   stripChordPro(document.getElementById('f-chords').value.trim()),
     notes:    document.getElementById('f-notes').value.trim()    || null,
   };
   if (editingSongId) {
@@ -2237,6 +2267,54 @@ function _isChord(token) {
   return _CHORD_RE.test(token.trim());
 }
 
+// ── Standard ChordPro directive support ───────────────────────
+// The app's native chart dialect uses [Chord] tokens and [Section]
+// header lines. These helpers let songs written in standard ChordPro
+// (curly-brace directives) render correctly too.
+const _COMMENT_RE = /^\{\s*(comment_italic|comment_box|comment|ci|cb|c|highlight)\s*:\s*([\s\S]*?)\s*\}$/i;
+const _SOE_LABEL = { chorus:'Chorus', verse:'Verse', bridge:'Bridge', tab:'Tab',
+  grid:'Grid', intro:'Intro', outro:'Outro', solo:'Solo', interlude:'Interlude',
+  prechorus:'Pre-Chorus', pre_chorus:'Pre-Chorus' };
+const _SHORT_SOE = { c:'chorus', v:'verse', b:'bridge', t:'tab', g:'grid' };
+
+// Convert standard ChordPro brace directives into the internal dialect:
+//   {start_of_chorus: Label} / {soc}  ->  [Label]   (bracket section header)
+//   {end_of_*} / {eoc} ...            ->  removed (sections run to next header)
+//   {comment: ...} + variants         ->  kept (rendered inline by _renderLines)
+//   {title:}/{key:}/unknown {x}       ->  removed (metadata, not chart content)
+// Existing [bracket] songs pass through unchanged.
+function normalizeChordPro(src) {
+  if (!src) return '';
+  const longRe  = /^\{\s*(start_of|end_of)_([a-z0-9_]+)\s*(?::\s*([\s\S]*?))?\s*\}$/i;
+  const shortRe = /^\{\s*(so|eo)([a-z])\s*(?::\s*([\s\S]*?))?\s*\}$/i;
+  const out = [];
+  for (const rawLine of src.split('\n')) {
+    const line = rawLine.trim();
+    if (_COMMENT_RE.test(line)) { out.push(rawLine); continue; }
+    let m = line.match(longRe);
+    if (m) {
+      if (m[1].toLowerCase() === 'end_of') continue;
+      const type = m[2].toLowerCase();
+      const label = (m[3] && m[3].trim()) || _SOE_LABEL[type] ||
+        (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g,' '));
+      out.push('[' + label + ']');
+      continue;
+    }
+    m = line.match(shortRe);
+    if (m) {
+      if (m[1].toLowerCase() === 'eo') continue;
+      const type = _SHORT_SOE[m[2].toLowerCase()] || m[2].toLowerCase();
+      const label = (m[3] && m[3].trim()) || _SOE_LABEL[type] ||
+        (type.charAt(0).toUpperCase() + type.slice(1));
+      out.push('[' + label + ']');
+      continue;
+    }
+    if (/^\{[^}]*\}$/.test(line)) continue;
+    out.push(rawLine);
+  }
+  return out.join('\n');
+}
+
 function _isSectionLine(line) {
   // A line is a section marker line if it is exactly one bracket token
   // and that token is not a chord name.
@@ -2273,6 +2351,17 @@ function _buildSectionMap(lines) {
 function _renderLines(lines, xpSemitones, mode) {
   const out = [];
   for (const line of lines) {
+    // Inline ChordPro comment / annotation directive
+    const _cm = line.trim().match(_COMMENT_RE);
+    if (_cm) {
+      const _k = _cm[1].toLowerCase();
+      const _cls = (_k === 'comment_italic' || _k === 'ci') ? 'cp-comment cp-comment-italic'
+                 : (_k === 'comment_box'    || _k === 'cb') ? 'cp-comment cp-comment-box'
+                 : (_k === 'highlight')                      ? 'cp-comment cp-comment-hl'
+                 : 'cp-comment';
+      out.push('<div class="' + _cls + '">' + escHtml(_cm[2]) + '</div>');
+      continue;
+    }
     // Section marker — skip here, already handled by caller
     if (_isSectionLine(line)) continue;
 
@@ -2650,21 +2739,18 @@ function lRenderSong() {
   }
 
   const el = document.getElementById('l-song-content');
+  const raw = normalizeChordPro(lSong.chords || lSong.lyrics || '');
   let html;
   if (lMode === 'consol') {
-    const raw = lSong.chords || lSong.lyrics || '';
     html = consolidatedHTML(raw, dispXp, 'chords') ||
       '<span class="cp-empty">No content added for this song.</span>';
   } else if (lMode === 'chordsonly') {
-    const raw = lSong.chords || lSong.lyrics || '';
     html = chordsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No chord content for this song.</span>';
   } else if (lMode === 'lyrics') {
-    const raw = lSong.chords || lSong.lyrics || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
   } else {
-    const raw = lSong.chords || lSong.lyrics || '';
     html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
   }
@@ -3665,6 +3751,8 @@ function closeBatchModal(e) {
 
 // ── File import (PDF / text chord sheets) ────────────────────
 let _importData = null;  // holds last server response
+let _importMeta = {};    // extracted ChordPro metadata
+let _importBody = '';    // body with metadata directives stripped
 
 async function handleImportFile(e) {
   const file = e.target.files[0];
@@ -3697,15 +3785,27 @@ async function handleImportFile(e) {
       return;
     }
     _importData = await r.json();
-    document.getElementById('import-title').value  = _importData.title  || '';
-    document.getElementById('import-artist').value = _importData.artist || '';
-    document.getElementById('import-preview').value = _importData.raw   || '';
-    const lines = (_importData.raw || '').split('\n').length;
+    // Pull standard ChordPro metadata out of the body and keep the cleaned
+    // remainder (sections + comments preserved) as the chart text.
+    const _ex = extractChordProMetadata(_importData.raw || '');
+    _importMeta = _ex.meta;
+    _importBody = _ex.body;
+    document.getElementById('import-title').value  = _ex.meta.title  || _importData.title  || '';
+    document.getElementById('import-artist').value = _ex.meta.artist || _importData.artist || '';
+    document.getElementById('import-preview').value = _ex.body || _importData.raw || '';
+    const lines = (_ex.body || _importData.raw || '').split('\n').length;
     document.getElementById('import-line-count').textContent = `(${lines} lines)`;
     const badge = document.getElementById('import-chordpro-badge');
     badge.style.display = _importData.is_chordpro ? 'inline-block' : 'none';
-    // Auto-select destination: ChordPro → chords field, plain text → chords field too
-    document.getElementById('import-dest-chords').checked = true;
+    // Summarize any extra metadata that will be applied to the new song
+    const dm = [];
+    if (_ex.meta.key)      dm.push('Key ' + _ex.meta.key);
+    if (_ex.meta.capo)     dm.push('Capo ' + _ex.meta.capo);
+    if (_ex.meta.tempo)    dm.push(_ex.meta.tempo + ' BPM');
+    if (_ex.meta.time)     dm.push(_ex.meta.time);
+    if (_ex.meta.duration) dm.push(_ex.meta.duration);
+    document.getElementById('import-detected-meta').textContent =
+      dm.length ? 'Detected: ' + dm.join(' · ') : '';
     status.textContent = '';
   } catch (err) {
     status.textContent = 'Network error: ' + err.message;
@@ -3720,18 +3820,23 @@ async function confirmImport() {
   }
   const artist  = document.getElementById('import-artist').value.trim();
   const raw     = document.getElementById('import-preview').value;
-  const dest    = document.querySelector('input[name="import-dest"]:checked')?.value || 'chords';
   const status  = document.getElementById('import-status');
 
   status.textContent = 'Saving…';
 
+  // Fold in any metadata detected from ChordPro directives.
+  const m = _importMeta || {};
+  const tsOptions = ['4/4','3/4','2/4','5/4','6/8','12/8'];
   const body = {
     title,
     artist: artist || null,
-    song_key: null, capo: 0, tempo: null, duration: null,
-    status: 'active', lyrics: null, chords: null, notes: null,
+    song_key: m.key || null,
+    capo: m.capo ? (parseInt(m.capo) || 0) : 0,
+    tempo: m.tempo ? (parseInt(m.tempo) || null) : null,
+    duration: m.duration ? (m.duration.includes(':') ? parseDur(m.duration) : (parseInt(m.duration) || null)) : null,
+    time_sig: (m.time && tsOptions.includes(m.time.trim())) ? m.time.trim() : '4/4',
+    status: 'active', chords: raw, lyrics: stripChordPro(raw), notes: null,
   };
-  body[dest] = raw;
 
   try {
     const r = await fetch('/api/songs', {
