@@ -34,7 +34,7 @@ Full control: song library, setlists, live navigation, rehearsal mode, signals, 
 Stage view showing the current song. Each musician independently controls their view mode, font size, transpose, capo compensation, autoscroll speed, and line spacing. All preferences are saved per device. Transpose is remembered per song — a chart you always play a step down comes back transposed. The screen is kept awake while a song is showing, and a clear warning appears if the device loses contact with the leader mid-show. A section-jump button lets a player skip straight to the Bridge or Chorus.
 
 **Confidence monitor** (http://your-ip:8000/monitor)
-Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time. Scan the QR code on the standby screen to configure it from your phone.
+Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time.
 
 ---
 
@@ -78,8 +78,11 @@ Switch to Lyrics mode to hide the toolbar and write plain text without chord syn
 The view mode button on each device cycles through four options:
 
 **Chords** — chord-above-lyric layout (default)
+
 **Lyrics** — plain text with section markers, no chord notation
+
 **Consol** — each unique section shown once, all repeats removed
+
 **Melody** — chord names and section markers only, no lyric text
 
 ---
