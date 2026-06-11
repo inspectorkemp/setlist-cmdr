@@ -138,6 +138,15 @@ body.hi-contrast #content .cp-chords { color:#ffcc00; font-weight:700; }
   border-bottom:1px dashed var(--border);
 }
 .cp-section-ref .cp-section-label { color:var(--dim); }
+.cp-comment {
+  display:inline-block; margin:0.5em 0 0.3em; padding:4px 14px;
+  font-size:0.9em; line-height:1.35; color:var(--amber);
+  background:rgba(245,158,11,0.16); border-left:4px solid var(--amber);
+  border-radius:0 6px 6px 0;
+}
+.cp-comment-italic { font-style:italic; }
+.cp-comment-box { border:1px solid var(--amber); border-left-width:4px; }
+.cp-comment-hl { color:#000; background:var(--amber); }
 .cp-section-repeat {
   font-size:0.72em; color:var(--dim);
   font-family:'DM Mono', monospace; letter-spacing:1px;
@@ -756,6 +765,54 @@ function _isChord(token) {
   return _CHORD_RE.test(token.trim());
 }
 
+// ── Standard ChordPro directive support ───────────────────────
+// The app's native chart dialect uses [Chord] tokens and [Section]
+// header lines. These helpers let songs written in standard ChordPro
+// (curly-brace directives) render correctly too.
+const _COMMENT_RE = /^\{\s*(comment_italic|comment_box|comment|ci|cb|c|highlight)\s*:\s*([\s\S]*?)\s*\}$/i;
+const _SOE_LABEL = { chorus:'Chorus', verse:'Verse', bridge:'Bridge', tab:'Tab',
+  grid:'Grid', intro:'Intro', outro:'Outro', solo:'Solo', interlude:'Interlude',
+  prechorus:'Pre-Chorus', pre_chorus:'Pre-Chorus' };
+const _SHORT_SOE = { c:'chorus', v:'verse', b:'bridge', t:'tab', g:'grid' };
+
+// Convert standard ChordPro brace directives into the internal dialect:
+//   {start_of_chorus: Label} / {soc}  ->  [Label]   (bracket section header)
+//   {end_of_*} / {eoc} ...            ->  removed (sections run to next header)
+//   {comment: ...} + variants         ->  kept (rendered inline by _renderLines)
+//   {title:}/{key:}/unknown {x}       ->  removed (metadata, not chart content)
+// Existing [bracket] songs pass through unchanged.
+function normalizeChordPro(src) {
+  if (!src) return '';
+  const longRe  = /^\{\s*(start_of|end_of)_([a-z0-9_]+)\s*(?::\s*([\s\S]*?))?\s*\}$/i;
+  const shortRe = /^\{\s*(so|eo)([a-z])\s*(?::\s*([\s\S]*?))?\s*\}$/i;
+  const out = [];
+  for (const rawLine of src.split('\n')) {
+    const line = rawLine.trim();
+    if (_COMMENT_RE.test(line)) { out.push(rawLine); continue; }
+    let m = line.match(longRe);
+    if (m) {
+      if (m[1].toLowerCase() === 'end_of') continue;
+      const type = m[2].toLowerCase();
+      const label = (m[3] && m[3].trim()) || _SOE_LABEL[type] ||
+        (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g,' '));
+      out.push('[' + label + ']');
+      continue;
+    }
+    m = line.match(shortRe);
+    if (m) {
+      if (m[1].toLowerCase() === 'eo') continue;
+      const type = _SHORT_SOE[m[2].toLowerCase()] || m[2].toLowerCase();
+      const label = (m[3] && m[3].trim()) || _SOE_LABEL[type] ||
+        (type.charAt(0).toUpperCase() + type.slice(1));
+      out.push('[' + label + ']');
+      continue;
+    }
+    if (/^\{[^}]*\}$/.test(line)) continue;
+    out.push(rawLine);
+  }
+  return out.join('\n');
+}
+
 function _isSectionLine(line) {
   // A line is a section marker line if it is exactly one bracket token
   // and that token is not a chord name.
@@ -792,6 +849,17 @@ function _buildSectionMap(lines) {
 function _renderLines(lines, xpSemitones, mode) {
   const out = [];
   for (const line of lines) {
+    // Inline ChordPro comment / annotation directive
+    const _cm = line.trim().match(_COMMENT_RE);
+    if (_cm) {
+      const _k = _cm[1].toLowerCase();
+      const _cls = (_k === 'comment_italic' || _k === 'ci') ? 'cp-comment cp-comment-italic'
+                 : (_k === 'comment_box'    || _k === 'cb') ? 'cp-comment cp-comment-box'
+                 : (_k === 'highlight')                      ? 'cp-comment cp-comment-hl'
+                 : 'cp-comment';
+      out.push('<div class="' + _cls + '">' + escHtml(_cm[2]) + '</div>');
+      continue;
+    }
     // Section marker — skip here, already handled by caller
     if (_isSectionLine(line)) continue;
 
@@ -1211,20 +1279,17 @@ function renderSong() {
   const el = document.getElementById('content');
   let html;
   viewMode = _monitorViewMode;
+  const raw = normalizeChordPro(song.chords || song.lyrics || '');
   if (viewMode === 'consol') {
-    const raw = song.chords || song.lyrics || '';
     html = consolidatedHTML(raw, dispXp, 'chords') ||
       '<span class="cp-empty">No content for this song.</span>';
   } else if (viewMode === 'chordsonly') {
-    const raw = song.chords || song.lyrics || '';
     html = chordsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No chord content for this song.</span>';
   } else if (viewMode === 'chords') {
-    const raw = song.chords || song.lyrics || '';
     html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   } else {
-    const raw = song.chords || song.lyrics || '';
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content for this song.</span>';
   }
