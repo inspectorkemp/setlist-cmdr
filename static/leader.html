@@ -586,7 +586,12 @@ body.hi-contrast #l-song-content .cp-chords-row { color:#ffcc00; font-weight:700
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;
                  background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"
                  title="Rotate browser content 90° in software — TV stays in landscape">
-            <input type="checkbox" id="mon-rotated" style="accent-color:var(--amber);"> Rotate 90°
+            Rotate
+            <select id="mon-rotation" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:.8rem;">
+              <option value="0">Off</option>
+              <option value="90">90° ↻ CW</option>
+              <option value="-90">90° ↺ CCW</option>
+            </select>
           </label>
         </div>
         <button class="btn primary" onclick="pushMonitorConfig()" style="width:100%;">
@@ -1724,20 +1729,106 @@ function renderSlSongs() {
     }
     const meta = [s.artist, s.song_key ? `Key: ${s.song_key}` : '', s.duration ? fmtDur(s.duration) : '']
       .filter(Boolean).join(' · ');
-    html += `<div class="ss-row">
+    html += `<div class="ss-row" draggable="true" data-id="${s.ss_id}" data-idx="${i}">
+      <span class="ss-drag-handle" title="Drag to reorder">⠿</span>
       <span style="font-family:'DM Mono',monospace;font-size:.75rem;color:var(--dim);min-width:20px;">${i+1}.</span>
       <div class="ss-info">
         <div class="ss-title">${esc(s.title)}</div>
         ${meta ? `<div class="ss-meta">${meta}</div>` : ''}
         ${s.section_label ? `<div class="ss-sec">§ ${esc(s.section_label)}</div>` : ''}
       </div>
-      <button class="ss-btn" onclick="moveSlSong(${i},-1)" ${i===0?'disabled':''} title="Move up">↑</button>
-      <button class="ss-btn" onclick="moveSlSong(${i},+1)" ${i===slSongs.length-1?'disabled':''} title="Move down">↓</button>
       <button class="ss-btn" onclick="setSection(${i})" title="Set section label">§</button>
       <button class="ss-btn danger" onclick="removeSlSong(${s.ss_id})" title="Remove">✕</button>
     </div>`;
   });
   el.innerHTML = html;
+  initSlSongDrag();
+}
+
+// Drag-and-drop reorder for songs within the setlist. Works with both mouse
+// (HTML5 drag-and-drop) and touch (pointer events). On drop it moves the song
+// within the slSongs array, persists the new order, and reloads so section
+// dividers and numbering rebuild correctly.
+function initSlSongDrag() {
+  const list = document.getElementById('sl-songs');
+  if (!list) return;
+
+  async function commitMove(fromId, toId, dropAfter) {
+    if (fromId === toId) return;
+    const fromIdx = slSongs.findIndex(s => s.ss_id === fromId);
+    let toIdx     = slSongs.findIndex(s => s.ss_id === toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [moved] = slSongs.splice(fromIdx, 1);
+    toIdx = slSongs.findIndex(s => s.ss_id === toId);
+    let insertAt = dropAfter ? toIdx + 1 : toIdx;
+    slSongs.splice(insertAt, 0, moved);
+    await api.put(`/api/setlists/${currentSl.id}/reorder`, { order: slSongs.map(s => s.ss_id) });
+    await loadSlSongs(currentSl.id);
+  }
+
+  let dragId = null;
+  list.querySelectorAll('.ss-row').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      dragId = +row.dataset.id;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      list.querySelectorAll('.ss-row').forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      list.querySelectorAll('.ss-row').forEach(r => r.classList.remove('drag-over'));
+      if (+row.dataset.id !== dragId) row.classList.add('drag-over');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const targetId = +row.dataset.id;
+      if (dragId == null || targetId === dragId) return;
+      const rows = [...list.querySelectorAll('.ss-row')];
+      const dropAfter = rows.findIndex(r => +r.dataset.id === dragId) <
+                        rows.findIndex(r => +r.dataset.id === targetId);
+      commitMove(dragId, targetId, dropAfter);
+      dragId = null;
+    });
+  });
+
+  // Touch reorder via the drag handle (HTML5 DnD does not fire on touch).
+  list.querySelectorAll('.ss-drag-handle').forEach(handle => {
+    handle.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse') return;   // mouse uses native DnD above
+      e.preventDefault();
+      const row = handle.closest('.ss-row');
+      if (!row) return;
+      const startId = +row.dataset.id;
+      row.classList.add('dragging');
+      let overId = startId;
+      const move = ev => {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const over = el && el.closest('.ss-row');
+        list.querySelectorAll('.ss-row').forEach(r => r.classList.remove('drag-over'));
+        if (over && +over.dataset.id !== startId) {
+          over.classList.add('drag-over');
+          overId = +over.dataset.id;
+        }
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        row.classList.remove('dragging');
+        list.querySelectorAll('.ss-row').forEach(r => r.classList.remove('drag-over'));
+        if (overId !== startId) {
+          const fromIdx = slSongs.findIndex(s => s.ss_id === startId);
+          const toIdx   = slSongs.findIndex(s => s.ss_id === overId);
+          commitMove(startId, overId, fromIdx < toIdx);
+        }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+  });
 }
 
 async function moveSlSong(idx, dir) {
@@ -2594,35 +2685,33 @@ function consolidatedHTML(text, xpSemitones, mode) {
     if (_isSectionLine(line)) {
       const label = _sectionLabel(line);
 
-      // Does this occurrence have its own content?
-      let hasContent = false;
-      let j = i + 1;
-      while (j < lines.length && !_isSectionLine(lines[j])) {
-        if (lines[j].trim() !== '') { hasContent = true; break; }
-        j++;
-      }
-
-      if (seen.has(label) || !hasContent) {
-        // Skip — already rendered or bare reference
-        i++;
-        while (i < lines.length && !_isSectionLine(lines[i])) i++;
-        continue;
-      }
-
-      seen.add(label);
-      out.push(
-        '<div class="cp-section">' +
-          '<span class="cp-section-label">' + escHtml(label) + '</span>' +
-        '</div>'
-      );
+      // Collect this occurrence's own content lines
       i++;
       const sectionLines = [];
       while (i < lines.length && !_isSectionLine(lines[i])) {
         sectionLines.push(lines[i]);
         i++;
       }
-      out.push(_renderLines(sectionLines, xpSemitones, mode));
+      const hasContent = sectionLines.some(l => l.trim() !== '');
 
+      if (!seen.has(label) && hasContent) {
+        // First occurrence with content — full header + content
+        seen.add(label);
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        out.push(_renderLines(sectionLines, xpSemitones, mode));
+      } else {
+        // Repeat or bare reference — header shown, duplicate content omitted
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+      }
     } else {
       out.push(_renderLines([line], xpSemitones, mode));
       i++;
@@ -3505,7 +3594,8 @@ function openSettingsModal() {
   document.getElementById('mon-hc').checked       = !!mc.hc;
   document.getElementById('mon-portrait').checked = !!mc.portrait;
   document.getElementById('mon-usecapo').checked  = mc.usecapo !== false;
-  document.getElementById('mon-rotated').checked  = !!mc.rotated;
+  document.getElementById('mon-rotation').value =
+    String((mc.rotation !== undefined) ? (parseInt(mc.rotation) || 0) : (mc.rotated ? 90 : 0));
   const fs = parseFloat(mc.fontscale) || 1.0;
   document.getElementById('mon-fontscale').value = fs;
   document.getElementById('mon-fs-val').textContent = fs.toFixed(1) + 'x';
@@ -3612,7 +3702,7 @@ function pushMonitorConfig() {
     hc:        document.getElementById('mon-hc').checked,
     portrait:  document.getElementById('mon-portrait').checked,
     usecapo:   document.getElementById('mon-usecapo').checked,
-    rotated:   document.getElementById('mon-rotated').checked,
+    rotation:  parseInt(document.getElementById('mon-rotation').value) || 0,
     fontscale: parseFloat(document.getElementById('mon-fontscale').value),
   };
   if (!leaderWs || leaderWs.readyState !== 1) {
