@@ -13,4 +13,19 @@ websockets>=13.0,<15.0    ; python_version < "3.10"
 websockets>=13.0           ; python_version >= "3.10"
 
 python-multipart>=0.0.18
-pdfplumber>=0.11
+
+# ── Optional: PDF import support ──────────────────────────────
+# pdfplumber lets you import songs from born-digital PDF files. It is
+# NOT required to run the app — every other import format (.txt, .chopro,
+# .cho, .crd, .chordpro, .pro) and all core features work without it.
+#
+# It is left out of the default install because pdfplumber pulls in the
+# `cryptography` package, which on some machines (notably macOS without
+# Homebrew's OpenSSL + pkg-config) tries to compile from Rust source and
+# fails. If you want PDF import, install it separately:
+#
+#     ./venv/bin/pip install "pdfplumber>=0.11"      # macOS / Linux
+#     venv\Scripts\pip install "pdfplumber>=0.11"    # Windows
+#
+# If that also fails to build cryptography on macOS, first run:
+#     brew install openssl pkgconf
