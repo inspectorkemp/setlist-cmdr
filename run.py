@@ -58,6 +58,23 @@ def ensure_deps():
         [str(venv_python()), "-m", "pip", "install", "-q", "-r", str(REQ_FILE)],
         cwd=ROOT
     )
+    # Optional PDF-import support. pdfplumber pulls in `cryptography`, which on
+    # some machines (e.g. macOS without OpenSSL + pkg-config) tries to compile
+    # from source and fails. We attempt it best-effort so PDF import works where
+    # it can, but never let it block the app from running.
+    try:
+        subprocess.check_call(
+            [str(venv_python()), "-m", "pip", "install", "-q", "pdfplumber>=0.11"],
+            cwd=ROOT
+        )
+    except subprocess.CalledProcessError:
+        print(
+            "  Note: optional PDF import support (pdfplumber) could not be\n"
+            "        installed on this machine. Everything else works; you can\n"
+            "        import .txt/.chopro/.cho/.chordpro files instead. To enable\n"
+            "        PDF import later, try: brew install openssl pkgconf, then\n"
+            "        ./venv/bin/pip install pdfplumber"
+        )
     print("  Dependencies ready")
 
 def open_browser(port):
