@@ -318,6 +318,10 @@ body.rotated #rotate-wrap {
   overflow: hidden;
   will-change: transform;
 }
+/* Counter-clockwise variant — same layout, mirrored transform */
+body.rotated.ccw #rotate-wrap {
+  transform: rotate(-90deg) translateX(-100%);
+}
 /* vw/vh are swapped after rotation — adjust font sizes */
 body.rotated #song-title {
   font-size: clamp(2.5rem, 5vh, 7rem);
@@ -1085,11 +1089,23 @@ function applyMonitorConfig(msg) {
   const fit       = msg.fit       !== undefined ? !!msg.fit      : document.body.classList.contains('fit');
   const hc        = msg.hc        !== undefined ? !!msg.hc       : document.body.classList.contains('hi-contrast');
   const port      = msg.portrait  !== undefined ? !!msg.portrait : portrait;
-  const rotated   = msg.rotated   !== undefined ? !!msg.rotated  : document.body.classList.contains('rotated');
+  // Rotation in degrees: 0 = none, 90 = clockwise, -90 = counter-clockwise.
+  // Falls back to the legacy `rotated` boolean (true = 90° CW) and then to
+  // the current on-screen state so partial configs don't reset it.
+  let rotation;
+  if (msg.rotation !== undefined) {
+    rotation = parseInt(msg.rotation) || 0;
+  } else if (msg.rotated !== undefined) {
+    rotation = msg.rotated ? 90 : 0;
+  } else {
+    rotation = document.body.classList.contains('rotated')
+      ? (document.body.classList.contains('ccw') ? -90 : 90) : 0;
+  }
+  const rotated = rotation !== 0;
   const fontscale = msg.fontscale !== undefined ? parseFloat(msg.fontscale) || 1.0 : 1.0;
 
   // Persist (without the type field)
-  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, portrait: port, rotated, fontscale, usecapo: monitorUseCapo }));
+  localStorage.setItem('monitor_cfg', JSON.stringify({ mode, cols, fit, hc, portrait: port, rotated, rotation, fontscale, usecapo: monitorUseCapo }));
 
   // Capo
   if (msg.usecapo !== undefined) {
@@ -1110,6 +1126,7 @@ function applyMonitorConfig(msg) {
   document.body.classList.toggle('hi-contrast', hc);
   document.body.classList.toggle('portrait',    port);
   document.body.classList.toggle('rotated',     rotated);
+  document.body.classList.toggle('ccw',         rotation === -90);
   // Keep module-level vars in sync for any code that still reads them
   fitMode    = fit;
   colMode    = cols;
@@ -1163,30 +1180,34 @@ function consolidatedHTML(text, xpSemitones, mode) {
 
     if (_isSectionLine(line)) {
       const label = _sectionLabel(line);
-      let hasContent = false;
-      let j = i + 1;
-      while (j < lines.length && !_isSectionLine(lines[j])) {
-        if (lines[j].trim() !== '') { hasContent = true; break; }
-        j++;
-      }
-      if (seen.has(label) || !hasContent) {
-        i++;
-        while (i < lines.length && !_isSectionLine(lines[i])) i++;
-        continue;
-      }
-      seen.add(label);
-      out.push(
-        '<div class="cp-section">' +
-          '<span class="cp-section-label">' + escHtml(label) + '</span>' +
-        '</div>'
-      );
+
+      // Collect this occurrence's own content lines
       i++;
       const sectionLines = [];
       while (i < lines.length && !_isSectionLine(lines[i])) {
         sectionLines.push(lines[i]);
         i++;
       }
-      out.push(_renderLines(sectionLines, xpSemitones, mode));
+      const hasContent = sectionLines.some(l => l.trim() !== '');
+
+      if (!seen.has(label) && hasContent) {
+        // First occurrence with content — full header + content
+        seen.add(label);
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        out.push(_renderLines(sectionLines, xpSemitones, mode));
+      } else {
+        // Repeat or bare reference — header shown, duplicate content omitted
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+      }
     } else {
       out.push(_renderLines([line], xpSemitones, mode));
       i++;
