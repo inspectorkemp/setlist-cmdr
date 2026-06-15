@@ -34,7 +34,7 @@ Full control: song library, setlists, live navigation, rehearsal mode, signals, 
 Stage view showing the current song. Each musician independently controls their view mode, font size, transpose, capo compensation, autoscroll speed, and line spacing. All preferences are saved per device. Transpose is remembered per song — a chart you always play a step down comes back transposed. The screen is kept awake while a song is showing, and a clear warning appears if the device loses contact with the leader mid-show. A section-jump button lets a player skip straight to the Bridge or Chorus.
 
 **Confidence monitor** (http://your-ip:8000/monitor)
-Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time.
+Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time. Scan the QR code on the standby screen to configure it from your phone.
 
 ---
 
@@ -78,11 +78,8 @@ Switch to Lyrics mode to hide the toolbar and write plain text without chord syn
 The view mode button on each device cycles through four options:
 
 **Chords** — chord-above-lyric layout (default)
-
 **Lyrics** — plain text with section markers, no chord notation
-
 **Consol** — each unique section shown once, all repeats removed
-
 **Melody** — chord names and section markers only, no lyric text
 
 ---
@@ -191,7 +188,21 @@ For the monitor browser, clear cached images and files after a restart if change
 
 ## Confidence monitor kiosk setup
 
-To run the monitor on a dedicated Pi, add a file at /etc/xdg/autostart/monitor.desktop:
+There are two ways to run the confidence monitor, depending on your setup.
+
+**Same Pi as the server (small shows):** `setup.sh` can configure this Pi to also boot straight into a fullscreen browser showing `/monitor` — useful when a second Pi for the monitor isn't worth bringing. During setup you'll be asked:
+
+```
+Set up confidence monitor kiosk on this Pi? [y/N]
+```
+
+Answer yes if this Pi has a screen attached and is running **Raspberry Pi OS with Desktop** (not Lite — the kiosk needs a graphical session). The script detects your desktop environment (labwc, the current default on Bookworm/Trixie, or older LXDE-based images), installs Chromium if it isn't already present, and registers a kiosk script that waits for the server to come up before opening `http://localhost:8000/monitor` fullscreen on boot.
+
+If you're running `setup.sh` non-interactively (e.g. piped from `curl`), this step is skipped by default — re-run with `SETUP_MONITOR_KIOSK=yes bash setup.sh` to enable it without a prompt. On a headless/Lite install, the step detects there's no desktop and skips automatically; the server still installs and runs normally.
+
+Make sure "Boot to Desktop" and auto-login are enabled in `raspi-config` (System Options → Boot / Auto Login), then reboot.
+
+**Dedicated second Pi (larger shows):** add a file at /etc/xdg/autostart/monitor.desktop:
 
 ```
 [Desktop Entry]
