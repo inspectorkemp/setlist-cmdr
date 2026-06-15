@@ -647,6 +647,14 @@ def _extract_pdf_text(data: bytes) -> str:
     Returns plain text with page breaks removed."""
     try:
         import pdfplumber
+    except ImportError:
+        raise HTTPException(
+            400,
+            "PDF import needs the optional 'pdfplumber' package, which isn't "
+            "installed. Install it with: ./venv/bin/pip install pdfplumber  "
+            "(or use a .txt / .chopro / .cho / .chordpro file instead)."
+        )
+    try:
         with pdfplumber.open(io.BytesIO(data)) as pdf:
             pages = []
             for page in pdf.pages:
@@ -654,6 +662,8 @@ def _extract_pdf_text(data: bytes) -> str:
                 if text:
                     pages.append(text.strip())
             return "\n\n".join(pages)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(400, f"Could not extract text from PDF: {exc}")
 
@@ -681,6 +691,88 @@ def _guess_title_artist(text: str, filename: str) -> tuple[str, str]:
         title = re.sub(r'\.[^.]+$', '', filename).replace('_', ' ').replace('-', ' ').strip()
     return title, artist
 
+def _normalize_newlines(text: str) -> str:
+    """Collapse CR, CRLF, and stray CR-runs (e.g. the \\r\\r\\n seen in some
+    exported .chopro files) into a single \\n so each source line becomes
+    exactly one line. Without this, \\r\\r\\n turns every lyric line into a
+    line plus a blank line, double-spacing the whole chart."""
+    return re.sub(r'\r+\n?', '\n', text)
+
+
+_CHORDPRO_META_MAP = {
+    't': 'title', 'title': 'title', 'st': 'subtitle', 'subtitle': 'subtitle',
+    'artist': 'artist', 'composer': 'composer', 'album': 'album', 'year': 'year',
+    'key': 'key', 'time': 'time', 'tempo': 'tempo', 'capo': 'capo',
+    'duration': 'duration',
+}
+
+
+def _extract_chordpro_meta(text: str):
+    """Pull standard ChordPro metadata directives ({title}, {key}, {tempo}, …)
+    out of the text. Returns (meta, body) where body has those metadata lines
+    removed; section ({start_of_…}) and comment directives are left in place."""
+    meta: dict = {}
+    body: list = []
+    dir_re = re.compile(r'^\{\s*([a-zA-Z_]+)\s*:\s*(.*?)\s*\}$')
+    for line in text.split('\n'):
+        m = dir_re.match(line.strip())
+        if m:
+            field = _CHORDPRO_META_MAP.get(m.group(1).lower())
+            if field:
+                meta.setdefault(field, m.group(2).strip())
+                continue
+        body.append(line)
+    return meta, '\n'.join(body).strip()
+
+
+_TS_OPTIONS = {'4/4', '3/4', '2/4', '5/4', '6/8', '12/8'}
+
+
+def _meta_to_fields(meta: dict):
+    """Map extracted ChordPro metadata to song columns:
+    (song_key, capo, tempo, time_sig, duration)."""
+    def _int(v):
+        try:
+            n = int(re.sub(r'[^\d]', '', str(v)))
+            return n
+        except (ValueError, TypeError):
+            return None
+    key = (meta.get('key') or '').strip() or None
+    tempo = _int(meta.get('tempo')) if meta.get('tempo') else None
+    capo = (_int(meta.get('capo')) or 0) if meta.get('capo') else 0
+    ts = (meta.get('time') or '').strip()
+    time_sig = ts if ts in _TS_OPTIONS else '4/4'
+    duration = None
+    dur = (meta.get('duration') or '').strip()
+    if dur:
+        if ':' in dur:
+            try:
+                mm, ss = dur.split(':')[:2]
+                duration = int(mm) * 60 + int(ss)
+            except ValueError:
+                duration = None
+        else:
+            duration = _int(dur)
+    return key, capo, tempo, time_sig, duration
+
+
+def _looks_like_chordpro(text: str) -> bool:
+    """True if the text has inline [chords] or {directives}."""
+    return bool(re.search(r'\[[A-G][^\]]*\]', text)) or \
+        bool(re.search(r'^\{\s*[a-zA-Z_]+\s*:', text, re.M))
+
+
+def _import_title_artist(raw: str, filename: str, meta: dict):
+    """Pick title/artist for an imported song. For ChordPro files, trust the
+    {title}/{artist} directives and never scrape body lines (a lyric line is
+    not an artist). For plain text, fall back to the line heuristic."""
+    if _looks_like_chordpro(raw):
+        title = meta.get('title') or re.sub(r'\.[^.]+$', '', filename).replace('_', ' ').replace('-', ' ').strip()
+        artist = meta.get('artist') or meta.get('subtitle') or ''
+        return title, artist
+    return _guess_title_artist(raw, filename)
+
+
 def _clean_extracted_text(text: str) -> str:
     """Normalise whitespace and remove common PDF artefacts."""
     # Collapse runs of blank lines to a single blank line
@@ -706,8 +798,10 @@ async def import_song_file(file: UploadFile = File(...)):
     else:
         raise HTTPException(400, "Unsupported file type. Accepted: .pdf .txt .chopro .cho .crd .chordpro")
 
+    raw = _normalize_newlines(raw)
     raw = _clean_extracted_text(raw)
-    title, artist = _guess_title_artist(raw, file.filename or "Imported Song")
+    meta, _body = _extract_chordpro_meta(raw)
+    title, artist = _import_title_artist(raw, file.filename or "Imported Song", meta)
 
     # Detect whether text already looks like ChordPro (has [Chord] markers)
     is_chordpro = bool(re.search(r'\[[A-G][^\]]*\]', raw))
@@ -735,11 +829,13 @@ def _process_one_file(filename: str, data: bytes) -> dict:
         else:
             return {"filename": filename, "ok": False, "error": "Unsupported file type"}
 
+        raw = _normalize_newlines(raw)
         raw = _clean_extracted_text(raw)
         if not raw.strip():
             return {"filename": filename, "ok": False, "error": "No text content found"}
 
-        title, artist = _guess_title_artist(raw, filename)
+        meta, body = _extract_chordpro_meta(raw)
+        title, artist = _import_title_artist(raw, filename, meta)
         is_chordpro = bool(re.search(r'\[[A-G][^\]]*\]', raw))
 
         return {
@@ -747,7 +843,8 @@ def _process_one_file(filename: str, data: bytes) -> dict:
             "ok":          True,
             "title":       title,
             "artist":      artist,
-            "raw":         raw,
+            "raw":         body if is_chordpro else raw,
+            "meta":        meta,
             "is_chordpro": is_chordpro,
         }
     except Exception as exc:
@@ -771,10 +868,11 @@ async def import_songs_batch(file: UploadFile = File(...)):
         # Write single song to DB
         with get_db() as conn:
             dest = "chords" if result["is_chordpro"] else "lyrics"
+            _k, _capo, _tempo, _ts, _dur = _meta_to_fields(result.get("meta") or {})
             cur = conn.execute(
                 "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
                 " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
+                (result["title"], result["artist"] or None, _k, _capo, _tempo, _ts, _dur,
                  "active",
                  None if dest == "chords" else result["raw"],
                  result["raw"] if dest == "chords" else None,
@@ -837,11 +935,12 @@ async def import_songs_batch(file: UploadFile = File(...)):
                     continue
 
                 dest = "chords" if result["is_chordpro"] else "lyrics"
+                _k, _capo, _tempo, _ts, _dur = _meta_to_fields(result.get("meta") or {})
                 try:
                     cur = conn.execute(
                         "INSERT INTO songs (title,artist,song_key,capo,tempo,time_sig,duration,status,lyrics,chords,notes)"
                         " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                        (result["title"], result["artist"] or None, None, 0, None, '4/4', None,
+                        (result["title"], result["artist"] or None, _k, _capo, _tempo, _ts, _dur,
                          "active",
                          None if dest == "chords" else result["raw"],
                          result["raw"] if dest == "chords" else None,
@@ -1077,6 +1176,7 @@ monitor_config = _load_state("monitor_config", {
     "hc":        False,
     "portrait":  False,
     "rotated":   False,
+    "rotation":  0,
     "usecapo":   True,
     "fontscale": 1.0,
 })
@@ -1148,13 +1248,25 @@ async def ws_endpoint(websocket: WebSocket):
                     elif msg.get("type") == "standby_logo_update":
                         await manager.broadcast({"type": "standby_logo_update"})
                     elif msg.get("type") == "monitor_config":
+                        # Rotation: accept new `rotation` (0/90/-90) or legacy
+                        # `rotated` boolean; keep both fields in sync.
+                        if "rotation" in msg:
+                            try:
+                                _rot = int(msg.get("rotation") or 0)
+                            except (TypeError, ValueError):
+                                _rot = 0
+                        elif "rotated" in msg:
+                            _rot = 90 if msg.get("rotated") else 0
+                        else:
+                            _rot = monitor_config.get("rotation", 0)
                         monitor_config.update({
                             "mode":      msg.get("mode",      monitor_config["mode"]),
                             "cols":      bool(msg.get("cols",      monitor_config["cols"])),
                             "fit":       bool(msg.get("fit",       monitor_config["fit"])),
                             "hc":        bool(msg.get("hc",        monitor_config["hc"])),
                             "portrait":  bool(msg.get("portrait",  monitor_config["portrait"])),
-                            "rotated":   bool(msg.get("rotated",   monitor_config["rotated"])),
+                            "rotation":  _rot,
+                            "rotated":   _rot != 0,
                             "usecapo":   bool(msg.get("usecapo",   monitor_config["usecapo"])),
                             "fontscale": float(msg.get("fontscale", monitor_config["fontscale"])),
                         })
