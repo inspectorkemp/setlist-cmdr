@@ -276,13 +276,14 @@
 
     <div class="toggle-row">
       <div>
-        <div class="toggle-label">Rotate 90°</div>
+        <div class="toggle-label">Rotate</div>
         <div class="toggle-hint">Rotates browser content in software — TV stays in landscape mode</div>
       </div>
-      <label class="toggle">
-        <input type="checkbox" id="tog-rotated">
-        <div class="toggle-track"></div>
-      </label>
+      <div class="seg" id="rotate-seg" style="flex-shrink:0;">
+        <button data-val="0"   onclick="setRotation(0)">OFF</button>
+        <button data-val="90"  onclick="setRotation(90)">90° ↻</button>
+        <button data-val="-90" onclick="setRotation(-90)">90° ↺</button>
+      </div>
     </div>
 
     <div class="toggle-row" style="align-items:flex-start;padding-top:12px;">
@@ -343,6 +344,7 @@ let cfg = {
   cols:      false,
   fit:       false,
   hc:        false,
+  rotation:  0,
   fontscale: 1.0,
 };
 let ws = null;
@@ -361,13 +363,22 @@ function updateFontscale(val) {
     cfg.fontscale.toFixed(2).replace(/\.?0+$/, '') + '×';
 }
 
+function setRotation(val) {
+  cfg.rotation = parseInt(val) || 0;
+  document.querySelectorAll('#rotate-seg button').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.val) === cfg.rotation);
+  });
+}
+
 function readToggles() {
   cfg.cols     = document.getElementById('tog-cols').checked;
   cfg.fit      = document.getElementById('tog-fit').checked;
   cfg.hc       = document.getElementById('tog-hc').checked;
   cfg.portrait = document.getElementById('tog-portrait').checked;
   cfg.usecapo  = document.getElementById('tog-usecapo').checked;
-  cfg.rotated  = document.getElementById('tog-rotated').checked;
+  // rotation is set via setRotation(); also send legacy `rotated` for
+  // older monitor builds that only understand the boolean.
+  cfg.rotated  = cfg.rotation !== 0;
 }
 
 function applyUI(c) {
@@ -377,11 +388,14 @@ function applyUI(c) {
   document.getElementById('tog-hc').checked       = !!c.hc;
   document.getElementById('tog-portrait').checked = !!c.portrait;
   document.getElementById('tog-usecapo').checked  = c.usecapo !== false;
-  document.getElementById('tog-rotated').checked  = !!c.rotated;
+  // Accept either the new rotation value or the legacy rotated boolean
+  const rot = (c.rotation !== undefined) ? (parseInt(c.rotation) || 0)
+            : (c.rotated ? 90 : 0);
+  setRotation(rot);
   const fs = parseFloat(c.fontscale) || 1.0;
   document.getElementById('fontscale-slider').value = fs;
   updateFontscale(fs);
-  cfg = { ...cfg, ...c };
+  cfg = { ...cfg, ...c, rotation: rot };
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
