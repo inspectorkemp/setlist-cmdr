@@ -1231,35 +1231,33 @@ function consolidatedHTML(text, xpSemitones, mode) {
     if (_isSectionLine(line)) {
       const label = _sectionLabel(line);
 
-      // Does this occurrence have its own content?
-      let hasContent = false;
-      let j = i + 1;
-      while (j < lines.length && !_isSectionLine(lines[j])) {
-        if (lines[j].trim() !== '') { hasContent = true; break; }
-        j++;
-      }
-
-      if (seen.has(label) || !hasContent) {
-        // Skip — already rendered or bare reference
-        i++;
-        while (i < lines.length && !_isSectionLine(lines[i])) i++;
-        continue;
-      }
-
-      seen.add(label);
-      out.push(
-        '<div class="cp-section">' +
-          '<span class="cp-section-label">' + escHtml(label) + '</span>' +
-        '</div>'
-      );
+      // Collect this occurrence's own content lines
       i++;
       const sectionLines = [];
       while (i < lines.length && !_isSectionLine(lines[i])) {
         sectionLines.push(lines[i]);
         i++;
       }
-      out.push(_renderLines(sectionLines, xpSemitones, mode));
+      const hasContent = sectionLines.some(l => l.trim() !== '');
 
+      if (!seen.has(label) && hasContent) {
+        // First occurrence with content — full header + content
+        seen.add(label);
+        out.push(
+          '<div class="cp-section">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+          '</div>'
+        );
+        out.push(_renderLines(sectionLines, xpSemitones, mode));
+      } else {
+        // Repeat or bare reference — header shown, duplicate content omitted
+        out.push(
+          '<div class="cp-section-ref">' +
+            '<span class="cp-section-label">' + escHtml(label) + '</span>' +
+            '<span class="cp-section-repeat">(repeat)</span>' +
+          '</div>'
+        );
+      }
     } else {
       out.push(_renderLines([line], xpSemitones, mode));
       i++;
