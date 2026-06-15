@@ -221,6 +221,10 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .sl-active-toggle:hover { opacity: .7; }
 
 .ss-row { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: var(--sp-xs); display: flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-sm); }
+.ss-drag-handle { color: var(--dim); font-size: var(--fs-md); cursor: grab; flex-shrink: 0; padding: 2px 4px; touch-action: none; user-select: none; }
+.ss-drag-handle:active { cursor: grabbing; }
+.ss-row.dragging { opacity: 0.5; }
+.ss-row.drag-over { border-color: var(--amber); box-shadow: 0 -2px 0 var(--amber) inset; }
 .ss-row .ss-info { flex: 1; min-width: 0; }
 .ss-row .ss-title { font-family: var(--display); font-weight: var(--display-weight); font-size: var(--fs-md); letter-spacing: var(--display-tracking); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ss-row .ss-meta  { font-family: var(--mono); font-size: var(--fs-xs); color: var(--dim); margin-top: 2px; letter-spacing: 0.04em; }
