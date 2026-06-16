@@ -3,7 +3,7 @@ Setlist CMDR — Raspberry Pi Local Server
 Run with: uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ import secrets
 import time
 import re
 import io
+import socket
 from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -1339,6 +1340,48 @@ def leader_page():
 @app.get("/api/version")
 def get_version():
     return {"build": BUILD_ID}
+
+
+def _get_lan_ip() -> str:
+    """Best-effort LAN-facing IP address of this machine. Used so the
+    monitor's standby screen can show a setup URL that's reachable from
+    another device on the network — `location.origin` alone isn't enough,
+    since a local kiosk browser opens the page via http://localhost, which
+    means nothing to someone else's phone."""
+    try:
+        # Doesn't actually send any data; just asks the OS which local
+        # interface/IP it would use to reach an external address. This is
+        # the standard portable trick for getting the real LAN IP without
+        # parsing `hostname -I` (which can return multiple/irrelevant
+        # addresses on a multi-interface machine).
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except OSError:
+            return "127.0.0.1"
+
+
+@app.get("/api/server-info")
+def get_server_info(request: Request):
+    """LAN IP and port this server is reachable on, for building URLs that
+    work from other devices (e.g. the monitor's on-screen setup link).
+    Port is read from the request itself (the Host header) rather than
+    assumed, since the app has no fixed/known port — it's whatever was
+    passed to `uvicorn --port` at launch."""
+    host_header = request.headers.get("host", "")
+    port = 8000
+    if ":" in host_header:
+        try:
+            port = int(host_header.rsplit(":", 1)[1])
+        except ValueError:
+            pass
+    return {"ip": _get_lan_ip(), "port": port}
 
 @app.get("/sw.js")
 def service_worker():
