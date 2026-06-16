@@ -1162,9 +1162,23 @@ function applyMonitorConfig(msg) {
       mode: viewMode, cols: false, fit: false, hc: false, portrait: true, fontscale: 1.0
     }));
   }
-  // Show setup URL on standby screen
+  // Show setup URL on standby screen. location.origin alone isn't reliable
+  // here: a kiosk browser on this same Pi opens the page via
+  // http://localhost:8000, and "localhost" means nothing on someone else's
+  // phone trying to scan/type the setup URL. Ask the server for its actual
+  // LAN-reachable IP and use that instead, falling back to location.origin
+  // only if the request fails (e.g. very old server build without the
+  // endpoint).
   const _su = document.getElementById('setup-url');
-  if (_su) _su.textContent = location.origin + '/monitor/setup';
+  if (_su) {
+    _su.textContent = location.origin + '/monitor/setup';   // immediate fallback
+    fetch('/api/server-info').then(r => r.json()).then(info => {
+      if (info && info.ip) {
+        const proto = location.protocol;
+        _su.textContent = `${proto}//${info.ip}:${info.port}/monitor/setup`;
+      }
+    }).catch(() => { /* keep the fallback already shown */ });
+  }
 })();
 
 // ── Consolidated view ─────────────────────────────────────────
