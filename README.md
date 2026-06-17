@@ -34,7 +34,7 @@ Full control: song library, setlists, live navigation, rehearsal mode, signals, 
 Stage view showing the current song. Each musician independently controls their view mode, font size, transpose, capo compensation, autoscroll speed, and line spacing. All preferences are saved per device. Transpose is remembered per song — a chart you always play a step down comes back transposed. The screen is kept awake while a song is showing, and a clear warning appears if the device loses contact with the leader mid-show. A section-jump button lets a player skip straight to the Bridge or Chorus.
 
 **Confidence monitor** (http://your-ip:8000/monitor)
-Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time. Scan the QR code on the standby screen to configure it from your phone.
+Full-screen display for a floor wedge or large TV. Tracks the leader scroll position and transpose in real time. The standby screen shows the setup URL with the Pi's actual LAN address, so you can configure it from your phone even when the monitor itself is showing the page via localhost (e.g. in kiosk mode on the same Pi).
 
 ---
 
@@ -79,14 +79,14 @@ The view mode button on each device cycles through four options:
 
 **Chords** — chord-above-lyric layout (default)
 **Lyrics** — plain text with section markers, no chord notation
-**Consol** — each unique section shown once, all repeats removed
+**Consol** — all section headers shown in order; duplicate section content omitted (repeated sections show a "(repeat)" cue instead of the full lyrics again)
 **Melody** — chord names and section markers only, no lyric text
 
 ---
 
 ## Setlists
 
-Create multiple setlists, add songs from the library, reorder by dragging (works with touch on an iPad), and insert section labels between songs. Songs within a setlist can also be reordered with up/down buttons. Running duration updates as you build. Clone any setlist as a starting point. Active and Inactive toggle lets you hide setlists you are not currently using.
+Create multiple setlists, add songs from the library, reorder by dragging (works with touch on an iPad), and insert section labels between songs. Songs within a setlist are also reordered by dragging the ⠿ handle on each row. Running duration updates as you build. Clone any setlist as a starting point. Active and Inactive toggle lets you hide setlists you are not currently using.
 
 To add a song to the current setlist without leaving the Songs tab, click the + Set button on any song card.
 
@@ -129,13 +129,13 @@ The monitor at /monitor shows the song title, key, BPM, and time signature in la
 
 **Configuring it — three ways without touching the TV:**
 
-1. Scan the QR code on the standby screen and adjust settings on your phone
+1. Read the setup URL shown on the standby screen and open it on your phone (it shows the Pi's actual LAN address, so it works from any device on the network — not just the Pi itself)
 2. Open Settings in the leader nav bar and use the Confidence Monitor section
 3. Open http://your-ip:8000/monitor/setup directly
 
-**Available settings:** view mode (Chords, Lyrics, Consol, Melody), two columns, fit mode, high contrast, capo compensation, font scale, portrait (hardware rotation), rotate 90 degrees (software rotation)
+**Available settings:** view mode (Chords, Lyrics, Consol, Melody), two columns, fit mode, high contrast, capo compensation, font scale, portrait (hardware rotation), rotate 90° CW or CCW (software rotation)
 
-**Rotate 90 degrees** uses a CSS transform to rotate the browser content 90 degrees clockwise. Use this when the TV is physically in landscape but you want portrait content. No TV or OS settings need to change.
+**Rotate 90°** uses a CSS transform to rotate the browser content 90 degrees — clockwise or counter-clockwise — without changing any TV or OS settings. Use this when the TV is physically in landscape but needs to display portrait content, or when the screen is physically mounted in a fixed orientation you can't change.
 
 ---
 
@@ -149,7 +149,9 @@ The monitor at /monitor shows the song title, key, BPM, and time signature in la
 
 ## Importing songs
 
-**Single file:** Click Import in the Songs toolbar. Supported: .pdf (born-digital only), .txt, .chopro, .cho, .crd, .chordpro, and .pro. A review modal opens before the song is created, showing any ChordPro metadata it detected.
+**Single file:** Click Import in the Songs toolbar. Supported: .txt, .chopro, .cho, .crd, .chordpro, .pro, and .pdf (born-digital only — scanned/image PDFs have no extractable text). A review modal opens before the song is created, showing any ChordPro metadata it detected.
+
+PDF support depends on the optional `pdfplumber` package, which both `run.py` and `setup.sh` try to install automatically alongside the required dependencies. On a machine where that install fails (most commonly macOS without Homebrew's OpenSSL and pkg-config), the app still runs normally — every other import format and all core features work without it — but `.pdf` import returns a clear error until `pdfplumber` is installed by hand: `pip install pdfplumber` (see the comments in requirements.txt for the macOS fix if that fails too).
 
 **Batch import:** Click Batch and select a zip file. Every supported file in the zip imports directly with duplicate detection. A results panel shows what was imported and what was skipped.
 
@@ -186,6 +188,27 @@ For the monitor browser, clear cached images and files after a restart if change
 
 ---
 
+## Wi-Fi stability on the Pi
+
+`setup.sh` automatically applies three fixes for known Raspberry Pi OS Wi-Fi issues, since a Pi running this app continuously (and, if you enable the kiosk, also driving a screen) needs a more stable connection than an idle install typically gets out of the box:
+
+1. **Disables Wi-Fi power save.** Raspberry Pi OS defaults the wireless radio's power-save mode to on, which is a common cause of a Pi that drops Wi-Fi after a few minutes and only reconnects after a reboot. A systemd service (`wifi-powersave-off.service`) turns this off on every boot, through both `iw` and NetworkManager.
+2. **Enables promiscuous mode on the Wi-Fi interface.** This works around a documented firmware bug in the Broadcom chip used in the Pi 3 and 4, where a flood of multicast/mDNS traffic can lock up the chip. Applied via `wifi-promisc-on.service`.
+3. **Installs a self-healing watchdog.** `wifi-watchdog.timer` checks connectivity to the gateway every 2 minutes and automatically cycles the Wi-Fi connection if it's unreachable, so a drop recovers on its own instead of needing physical access to the Pi to reboot it.
+
+These are general Raspberry Pi OS networking fixes, not specific to this app, and they're safe to leave in place even if you later move the app elsewhere. To check on them:
+
+```bash
+sudo systemctl status wifi-powersave-off.service
+sudo systemctl status wifi-promisc-on.service
+sudo systemctl status wifi-watchdog.timer
+sudo journalctl -u wifi-watchdog.service -n 50
+```
+
+If your Pi is on Ethernet only, these are harmless no-ops — the install step exits early if no wireless interface is found.
+
+---
+
 ## Confidence monitor kiosk setup
 
 There are two ways to run the confidence monitor, depending on your setup.
@@ -202,16 +225,28 @@ If you're running `setup.sh` non-interactively (e.g. piped from `curl`), this st
 
 Make sure "Boot to Desktop" and auto-login are enabled in `raspi-config` (System Options → Boot / Auto Login), then reboot.
 
-**Dedicated second Pi (larger shows):** add a file at /etc/xdg/autostart/monitor.desktop:
+**Dedicated second Pi (larger shows):** on the second Pi, create `~/.config/labwc/autostart` (or add to it if it already exists) with one line pointing at a shell script:
 
 ```
-[Desktop Entry]
-Type=Application
-Name=Monitor
-Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars http://main-pi-ip:8000/monitor
+/home/pi/monitor-kiosk.sh
 ```
 
-The monitor Pi needs no server. It just opens a browser pointed at the main Pi.
+Create that script:
+
+```bash
+#!/bin/bash
+chromium-browser \
+    --kiosk \
+    --noerrdialogs \
+    --disable-infobars \
+    --no-first-run \
+    --password-store=basic \
+    --ozone-platform=wayland \
+    --start-maximized \
+    http://main-pi-ip:8000/monitor
+```
+
+Make it executable with `chmod +x ~/monitor-kiosk.sh`. Make sure auto-login to desktop is enabled in `raspi-config`. The monitor Pi needs no server — it just opens a browser pointed at the main Pi.
 
 ---
 
