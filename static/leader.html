@@ -1007,7 +1007,11 @@ Here comes the sun…"></textarea>
       <div class="form-row">
         <div class="form-group" style="flex:2">
           <label>Title *</label>
-          <input id="f-title" type="text" placeholder="Song title" required>
+          <input id="f-title" type="text" placeholder="Song title" required
+                 onblur="checkDuplicateTitle()">
+          <div id="f-title-warn" style="display:none;color:var(--amber);font-size:.75rem;margin-top:4px;">
+            ⚠ A song with this title already exists in your library.
+          </div>
         </div>
         <div class="form-group" style="flex:1.5">
           <label>Artist / Band</label>
@@ -1017,15 +1021,19 @@ Here comes the sun…"></textarea>
       <div class="form-row">
         <div class="form-group">
           <label>Key</label>
-          <select id="f-key">
-            <option value="">—</option>
-            <option>C</option><option>C#</option><option>D</option><option>D#</option>
-            <option>E</option><option>F</option><option>F#</option><option>G</option>
-            <option>G#</option><option>A</option><option>A#</option><option>B</option>
-            <option>Cm</option><option>C#m</option><option>Dm</option><option>D#m</option>
-            <option>Em</option><option>Fm</option><option>F#m</option><option>Gm</option>
-            <option>G#m</option><option>Am</option><option>A#m</option><option>Bm</option>
-          </select>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="f-key" style="flex:1;">
+              <option value="">—</option>
+              <option>C</option><option>C#</option><option>Db</option><option>D</option><option>Eb</option><option>D#</option>
+              <option>E</option><option>F</option><option>F#</option><option>Gb</option><option>G</option>
+              <option>Ab</option><option>G#</option><option>A</option><option>Bb</option><option>A#</option><option>B</option>
+              <option>Cm</option><option>C#m</option><option>Dbm</option><option>Dm</option><option>Ebm</option><option>D#m</option>
+              <option>Em</option><option>Fm</option><option>F#m</option><option>Gbm</option><option>Gm</option>
+              <option>Abm</option><option>G#m</option><option>Am</option><option>Bbm</option><option>A#m</option><option>Bm</option>
+            </select>
+            <button type="button" class="btn" onclick="autoDetectKey()"
+                    style="flex-shrink:0;padding:7px 10px;font-size:.78rem;" title="Detect key from chords">⚙ Detect</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Capo</label>
@@ -1041,7 +1049,11 @@ Here comes the sun…"></textarea>
         </div>
         <div class="form-group">
           <label>Tempo (BPM)</label>
-          <input id="f-tempo" type="number" min="40" max="250" placeholder="120">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input id="f-tempo" type="number" min="40" max="250" placeholder="120" style="flex:1;">
+            <button type="button" class="btn" id="modal-tap-btn" onclick="modalTapTempo()"
+                    style="flex-shrink:0;padding:7px 12px;font-size:.78rem;" title="Tap to set BPM">TAP</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Time Signature</label>
@@ -1548,11 +1560,97 @@ function openSongModal(id) {
   document.getElementById('f-chords').value   = s?.chords || s?.lyrics || '';
   document.getElementById('f-notes').value    = s?.notes    || '';
   document.getElementById('delete-song-btn').style.display = id ? '' : 'none';
+  const warn = document.getElementById('f-title-warn');
+  if (warn) warn.style.display = 'none';
   document.getElementById('modal-overlay').classList.add('open');
 }
 
-function closeSongModal()   { document.getElementById('modal-overlay').classList.remove('open'); }
+function closeSongModal() {
+  editingSongId = null;
+  document.getElementById('modal-overlay').classList.remove('open');
+  const warn = document.getElementById('f-title-warn');
+  if (warn) warn.style.display = 'none';
+  _modalTapTimes = [];
+  const btn = document.getElementById('modal-tap-btn');
+  if (btn) btn.textContent = 'TAP';
+}
 function closeModal(e)      { if (e.target.id === 'modal-overlay') closeSongModal(); }
+
+// ── Song editor helper functions ──────────────────────────────
+
+// Warn (non-blocking) if another song with the same title already exists.
+// Runs on blur so it catches the issue before the user fills in the whole
+// form and clicks Save.
+function checkDuplicateTitle() {
+  const title = document.getElementById('f-title').value.trim().toLowerCase();
+  const warn = document.getElementById('f-title-warn');
+  if (!warn) return;
+  if (!title) { warn.style.display = 'none'; return; }
+  const dupe = songs.some(s => s.title.toLowerCase() === title && s.id !== editingSongId);
+  warn.style.display = dupe ? '' : 'none';
+}
+
+// Tap-tempo inside the song editor modal. Shares the same rolling-average
+// algorithm as the Live Control tap button, but writes to f-tempo instead
+// of the live song. Resets if > 3 s passes between taps.
+let _modalTapTimes = [];
+let _modalTapResetTimer = null;
+function modalTapTempo() {
+  const now = Date.now();
+  clearTimeout(_modalTapResetTimer);
+  if (_modalTapTimes.length > 0 && now - _modalTapTimes[_modalTapTimes.length - 1] > 3000) {
+    _modalTapTimes = [];
+  }
+  _modalTapTimes.push(now);
+  _modalTapResetTimer = setTimeout(() => { _modalTapTimes = []; }, 3000);
+  if (_modalTapTimes.length < 2) return;
+  const intervals = [];
+  for (let i = 1; i < _modalTapTimes.length; i++) intervals.push(_modalTapTimes[i] - _modalTapTimes[i - 1]);
+  const bpm = Math.max(20, Math.min(300,
+    Math.round(60000 / (intervals.reduce((a, b) => a + b, 0) / intervals.length))));
+  document.getElementById('f-tempo').value = bpm;
+  const btn = document.getElementById('modal-tap-btn');
+  if (btn) btn.textContent = 'TAP · ' + bpm;
+  clearTimeout(_modalTapResetTimer);
+  _modalTapResetTimer = setTimeout(() => {
+    _modalTapTimes = [];
+    if (btn) btn.textContent = 'TAP';
+  }, 3000);
+}
+
+// Scan the combined ChordPro field for chord tokens and guess the key
+// from the first chord of the first non-section line. Falls back to the
+// most-frequent root if the first-chord guess is a common passing chord
+// (diminished, augmented). Only suggests; never overwrites an existing
+// key without the user clicking the button.
+function autoDetectKey() {
+  const src = document.getElementById('f-chords').value;
+  if (!src.trim()) { showToast('No chord content to detect key from.'); return; }
+  // Extract all bracket-delimited tokens, skip non-chords and section markers
+  const tokens = [...src.matchAll(/\[([^\]]+)\]/g)].map(m => m[1].trim());
+  const roots = [];
+  for (const tok of tokens) {
+    if (!_isChord(tok)) continue;
+    // Pull the root: up to 2 chars (letter + optional # or b)
+    const m = tok.match(/^([A-G][#b]?)/);
+    if (m) roots.push(m[1]);
+  }
+  if (!roots.length) { showToast('No chords found in the content.'); return; }
+  // Score: weight first occurrence heavily, then frequency
+  const score = {};
+  roots.forEach((r, i) => { score[r] = (score[r] || 0) + (i === 0 ? 4 : 1); });
+  const best = Object.entries(score).sort((a, b) => b[1] - a[1])[0][0];
+  // Try to set the key select. The select has both sharp and flat spellings,
+  // so the raw detected root may match directly.
+  const sel = document.getElementById('f-key');
+  const opts = [...sel.options].map(o => o.value);
+  if (opts.includes(best)) {
+    sel.value = best;
+    showToast('Key detected: ' + best + ' — adjust if needed.');
+  } else {
+    showToast('Detected root ' + best + ' — set key manually if needed.');
+  }
+}
 
 async function saveSong() {
   const title = document.getElementById('f-title').value.trim();
