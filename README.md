@@ -46,6 +46,8 @@ Each song stores: title, artist, key, capo, time signature, tempo, duration, sta
 
 **Capo** is a first-class field. Chord displays show fingered shapes adjusted for the capo position. Each device has a CAPO toggle to turn this off for players who are not using one.
 
+**Key** supports both sharp and flat spellings — C#, Db, F#, Gb, Bb, Eb, Ab, etc. — in major and minor. A "⚙ Detect" button next to the field scans the Lyrics & Chords content and suggests the key from the first and most frequent chord root. It sets the field but never overwrites without you clicking it.
+
 **Time signature** options are 4/4, 3/4, 2/4, 5/4, 6/8, and 12/8. The metronome uses the correct beats per bar for each song automatically.
 
 **ChordPro format** stores chord names inline with lyrics using square brackets, in a single combined Lyrics & Chords field — paste a whole chart in at once rather than filling separate boxes. The song editor includes a fullscreen split editor with live preview, a chord insert toolbar, and a Convert tool that accepts the chords-above-lyrics format used by Ultimate Guitar and most plain-text chord sheets.
@@ -53,6 +55,18 @@ Each song stores: title, artist, key, capo, time signature, tempo, duration, sta
 **Standard ChordPro directives** are also recognized, so charts written for other ChordPro tools render correctly. Curly-brace section directives (`{start_of_chorus}` / `{soc}`, `{start_of_verse}`, `{start_of_bridge}`, with optional labels like `{start_of_verse: Verse 2}`) are treated the same as the bracket sections below; matching `{end_of_...}` markers are recognized. Inline annotations — `{comment: ...}` (and `{c:}`, `{ci:}` italic, `{cb:}` boxed) — render as highlighted cue lines in the chart on every screen. Metadata directives (`{title}`, `{artist}`, `{key}`, `{tempo}`, `{capo}`, `{time}`, `{duration}`) are pulled into the matching song fields automatically when a file is imported.
 
 **Section markers** use the same bracket syntax as chords. Any token that is not a chord name becomes a section header: [Verse 1], [Chorus], [Bridge], etc. Section headers appear in all view modes including Lyrics. A bare repeat reference like a second [Chorus] with no following content renders as a dimmed cue rather than duplicating the text.
+
+---
+
+## Song editor
+
+Click any song card to open the song editor modal, or click + New Song to create one.
+
+**TAP button** — next to the BPM field. Tap it in time to set tempo by feel. Shows the calculated BPM on the button while tapping and writes it to the tempo field. Resets after 3 seconds of inactivity.
+
+**⚙ Detect button** — next to the Key field. Scans the Lyrics & Chords content and suggests a key. See the Key entry above for details.
+
+**Duplicate title warning** — if you type a title that matches an existing song, an amber warning appears beneath the field when you tab away. Non-blocking; you can still save (e.g. if you intentionally have two versions of the same song in different keys).
 
 ---
 
