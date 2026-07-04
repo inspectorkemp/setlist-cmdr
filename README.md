@@ -89,12 +89,13 @@ Switch to Lyrics mode to hide the toolbar and write plain text without chord syn
 
 ## View modes
 
-The view mode button on each device cycles through four options:
+The view mode button on each device cycles through five options:
 
 **Chords** — chord-above-lyric layout (default)
 **Lyrics** — plain text with section markers, no chord notation
 **Consol** — all section headers shown in order; duplicate section content omitted (repeated sections show a "(repeat)" cue instead of the full lyrics again)
 **Melody** — chord names and section markers only, no lyric text
+**Nash** — Nashville Number System: chords shown as scale-degree numbers (1–7) relative to the song's Key field, with quality suffixes kept as written (Gmaj7 in the key of C becomes 5maj7) and off-scale roots marked with an accidental (b2, b3, #4, b6, b7). Requires the song's Key field to be set — without a key, chords display unchanged. Numbering is always relative to the key's major scale regardless of whether the song itself is major or minor, which is a standard simplification; some minor-key charts use a different convention. On the confidence monitor, Nash is set from the monitor setup page or the leader's monitor panel, since the monitor has no cycle button of its own.
 
 ---
 
