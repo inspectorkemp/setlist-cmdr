@@ -607,6 +607,51 @@ function xpText(text, n) {
   return text.replace(/\[([^\]]+)\]/g, (_,c) => `[${xpChord(c,n)}]`);
 }
 
+// ── Nashville Number System ────────────────────────────────────
+// Converts a chord to its scale-degree number relative to a key, e.g.
+// "D" in the key of C becomes "2". Quality suffixes (m, 7, sus4, m7b5...)
+// are kept exactly as written — only the root letter becomes a number.
+// Off-scale roots get an accidental (b2, b3, #4, b6, b7); numbering is
+// always relative to the key's major scale, regardless of whether the
+// song itself is major or minor (a standard simplification — chart
+// convention for minor keys varies more than this covers).
+const NNS_DEGREE = {
+  0:'1', 1:'b2', 2:'2', 3:'b3', 4:'3', 5:'4',
+  6:'#4', 7:'5', 8:'b6', 9:'6', 10:'b7', 11:'7'
+};
+
+// Extract the tonic note from a stored key string like "G", "Bm", "F#m".
+// Major/minor quality doesn't change the numbering (see note above), so
+// it's discarded here.
+function _nashKeyRoot(keyStr) {
+  if (!keyStr) return null;
+  const m = keyStr.trim().match(/^([A-G][#b]?)/);
+  if (!m) return null;
+  return ENHARM[m[1]] || m[1];
+}
+
+// Convert one chord token to Nashville Number notation relative to
+// keyRoot (a sharp-normalized note name from _nashKeyRoot). A slash bass
+// note (G/B) converts the same way as the root (-> 5/7).
+function chordToNashville(token, keyRoot) {
+  if (!keyRoot) return token;
+  const m = token.match(/^([A-G][#b]?)([^/]*)(?:\/([A-G][#b]?))?$/);
+  if (!m) return token;
+  let [, root, qual, bass] = m;
+  root = ENHARM[root] || root;
+  const keyIdx  = NOTES.indexOf(keyRoot);
+  const rootIdx = NOTES.indexOf(root);
+  if (keyIdx < 0 || rootIdx < 0) return token;
+  let out = NNS_DEGREE[(rootIdx - keyIdx + 12) % 12] + (qual || '');
+  if (bass) {
+    const b = ENHARM[bass] || bass;
+    const bIdx = NOTES.indexOf(b);
+    if (bIdx >= 0) out += '/' + NNS_DEGREE[(bIdx - keyIdx + 12) % 12];
+  }
+  return out;
+}
+
+
 // ── State ─────────────────────────────────────────────────────
 let name = localStorage.getItem('bsl_name') || '';
 let mode = localStorage.getItem('bsl_mode') || 'lyrics';
@@ -971,7 +1016,7 @@ function _buildSectionMap(lines) {
   return map;
 }
 
-function _renderLines(lines, xpSemitones, mode) {
+function _renderLines(lines, xpSemitones, mode, nashKeyRoot) {
   const out = [];
   for (const line of lines) {
     // Inline ChordPro comment / annotation directive
@@ -1011,7 +1056,9 @@ function _renderLines(lines, xpSemitones, mode) {
         const token = line.slice(cursor + 1, close);
         if (_isChord(token)) {
           // Apply transposition
-          const name = xpSemitones ? xpChord(token, xpSemitones) : token;
+          const name = (mode === 'nashville' && nashKeyRoot)
+            ? chordToNashville(token, nashKeyRoot)
+            : (xpSemitones ? xpChord(token, xpSemitones) : token);
           chords.push({ pos: charPos, name });
         } else {
           // Inline section marker inside a lyric line — treat as lyric text
@@ -1052,8 +1099,9 @@ function _renderLines(lines, xpSemitones, mode) {
   return out.join('');
 }
 
-function chordProToHTML(text, xpSemitones) {
+function chordProToHTML(text, xpSemitones, nashKeyRoot) {
   if (!text) return '';
+  const mode = nashKeyRoot ? 'nashville' : 'chords';
   const lines      = text.split('\n');
   const sectionMap = _buildSectionMap(lines);
   const out        = [];
@@ -1084,7 +1132,7 @@ function chordProToHTML(text, xpSemitones) {
           '</div>'
         );
         out.push('<div class="cp-repeat-content">');
-        out.push(_renderLines(content, xpSemitones, 'chords'));
+        out.push(_renderLines(content, xpSemitones, mode, nashKeyRoot));
         out.push('</div>');
         i++;
         // Skip any blank lines following the bare reference
@@ -1103,11 +1151,11 @@ function chordProToHTML(text, xpSemitones) {
           sectionLines.push(lines[i]);
           i++;
         }
-        out.push(_renderLines(sectionLines, xpSemitones, 'chords'));
+        out.push(_renderLines(sectionLines, xpSemitones, mode, nashKeyRoot));
       }
     } else {
       // Line outside any section marker
-      out.push(_renderLines([line], xpSemitones, 'chords'));
+      out.push(_renderLines([line], xpSemitones, mode, nashKeyRoot));
       i++;
     }
   }
@@ -1366,6 +1414,9 @@ function renderSong() {
   } else if (mode === 'lyrics') {
     html = lyricsOnlyHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
+  } else if (mode === 'nashville') {
+    html = chordProToHTML(raw, dispXp, _nashKeyRoot(song.song_key)) ||
+      '<span class="cp-empty">No content added for this song.</span>';
   } else {
     html = chordProToHTML(raw, dispXp) ||
       '<span class="cp-empty">No content added for this song.</span>';
@@ -1452,7 +1503,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Mode ──────────────────────────────────────────────────────
 function toggleMode() {
-  const cycle = ['lyrics', 'chords', 'consol', 'chordsonly'];
+  const cycle = ['lyrics', 'chords', 'consol', 'chordsonly', 'nashville'];
   mode = cycle[(cycle.indexOf(mode) + 1) % cycle.length] || 'lyrics';
   localStorage.setItem('bsl_mode', mode);
   applyMode();
@@ -1460,7 +1511,7 @@ function toggleMode() {
 }
 function applyMode() {
   const btn = document.getElementById('btn-mode');
-  const labels = { lyrics:'LYRICS', chords:'CHORDS', consol:'CONSOL', chordsonly:'MELODY' };
+  const labels = { lyrics:'LYRICS', chords:'CHORDS', consol:'CONSOL', chordsonly:'MELODY', nashville:'NASH' };
   btn.textContent = labels[mode] || 'LYRICS';
   btn.classList.toggle('active', mode === 'lyrics');
 }
