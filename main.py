@@ -17,6 +17,7 @@ import time
 import re
 import io
 import socket
+import uuid
 from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -280,6 +281,7 @@ def _validate_live_state():
 class ConnectionManager:
     def __init__(self):
         self.active: dict[WebSocket, str] = {}   # ws → name
+        self.monitor_ids: dict[WebSocket, str] = {}  # ws → monitor_id (only set for identified monitor connections)
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
@@ -287,10 +289,17 @@ class ConnectionManager:
 
     def disconnect(self, ws: WebSocket):
         self.active.pop(ws, None)
+        self.monitor_ids.pop(ws, None)
 
     def set_name(self, ws: WebSocket, name: str):
         if ws in self.active:
             self.active[ws] = name
+
+    def set_monitor_id(self, ws: WebSocket, monitor_id: str):
+        self.monitor_ids[ws] = monitor_id
+
+    def monitor_connected(self, monitor_id: str) -> bool:
+        return monitor_id in self.monitor_ids.values()
 
     def roster(self) -> list[str]:
         """Return only named musicians (blank = leader/anonymous, excluded)."""
@@ -302,6 +311,21 @@ class ConnectionManager:
     async def broadcast(self, msg: dict):
         dead = []
         for ws in list(self.active):
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+    async def send_to_monitor(self, monitor_id: str, msg: dict):
+        """Send a message only to connections identified as this specific
+        monitor — not a global broadcast. A monitor may (rarely) have more
+        than one live connection (e.g. a reload in flight); all get it."""
+        dead = []
+        for ws, mid in list(self.monitor_ids.items()):
+            if mid != monitor_id:
+                continue
             try:
                 await ws.send_json(msg)
             except Exception:
@@ -839,14 +863,27 @@ def _process_one_file(filename: str, data: bytes) -> dict:
         title, artist = _import_title_artist(raw, filename, meta)
         is_chordpro = bool(re.search(r'\[[A-G][^\]]*\]', raw))
 
+        # Compute confidence signals so the UI can flag results that likely
+        # need manual review after import (title guessed, no key, no chords).
+        title_from_directive = bool(meta.get("title"))
+        has_key    = bool(meta.get("key"))
+        has_chords = is_chordpro
+        review_reasons = []
+        if not title_from_directive: review_reasons.append("title guessed from filename")
+        if not has_key:              review_reasons.append("no key detected")
+        if not has_chords:           review_reasons.append("no chord content found")
+        needs_review = bool(review_reasons)
+
         return {
-            "filename":    filename,
-            "ok":          True,
-            "title":       title,
-            "artist":      artist,
-            "raw":         body if is_chordpro else raw,
-            "meta":        meta,
-            "is_chordpro": is_chordpro,
+            "filename":      filename,
+            "ok":            True,
+            "title":         title,
+            "artist":        artist,
+            "raw":           body if is_chordpro else raw,
+            "meta":          meta,
+            "is_chordpro":   is_chordpro,
+            "needs_review":  needs_review,
+            "review_reasons": review_reasons,
         }
     except Exception as exc:
         return {"filename": filename, "ok": False, "error": str(exc)}
@@ -887,6 +924,8 @@ async def import_songs_batch(file: UploadFile = File(...)):
             "title": result["title"],
             "artist": result["artist"],
             "song_id": song_id,
+            "needs_review": result.get("needs_review", False),
+            "review_reasons": result.get("review_reasons", []),
         }]}
 
     # Process zip
@@ -949,11 +988,13 @@ async def import_songs_batch(file: UploadFile = File(...)):
                     )
                     conn.commit()
                     results.append({
-                        "filename": basename,
-                        "ok":       True,
-                        "title":    result["title"],
-                        "artist":   result["artist"],
-                        "song_id":  cur.lastrowid,
+                        "filename":       basename,
+                        "ok":             True,
+                        "title":          result["title"],
+                        "artist":         result["artist"],
+                        "song_id":        cur.lastrowid,
+                        "needs_review":   result.get("needs_review", False),
+                        "review_reasons": result.get("review_reasons", []),
                     })
                     imported += 1
                 except Exception as exc:
@@ -1170,22 +1211,37 @@ metro_state = _load_state("metro_state", {
 })
 
 # monitor_config: persisted so Pi restart restores monitor display prefs
-monitor_config = _load_state("monitor_config", {
-    "mode":      "chords",
-    "cols":      False,
-    "fit":       False,
-    "hc":        False,
-    "portrait":  False,
-    "rotated":   False,
-    "rotation":  0,
-    "usecapo":   True,
-    "fontscale": 1.0,
-})
+def _default_monitor_config():
+    return {
+        "name":      "Unnamed Monitor",
+        "mode":      "chords",
+        "cols":      False,
+        "fit":       False,
+        "hc":        False,
+        "portrait":  False,
+        "rotated":   False,
+        "rotation":  0,
+        "usecapo":   True,
+        "fontscale": 1.0,
+        "last_seen": None,
+    }
 
-@app.put("/api/metro")
-async def set_metro_stub():
-    return {"ok": True}
-
+# monitor_configs: {monitor_id: config_dict}. Each physical monitor/kiosk
+# browser gets its own persistent id (generated client-side, stored in that
+# browser's localStorage) and its own independent settings — so a "Stage
+# Left" monitor can run a different capo/layout/mode than a "Stage Right"
+# one. Persisted so a Pi restart restores every monitor's display prefs.
+monitor_configs = _load_state("monitor_configs", {})
+if not monitor_configs:
+    # One-time migration: older builds had a single global "monitor_config".
+    # Carry it forward as the first monitor's config rather than losing it.
+    _legacy = _load_state("monitor_config", {})
+    if _legacy:
+        _migrated = _default_monitor_config()
+        _migrated.update({k: v for k, v in _legacy.items() if k in _migrated})
+        _migrated["name"] = "Monitor"
+        monitor_configs[str(uuid.uuid4())] = _migrated
+        _save_state("monitor_configs", monitor_configs)
 
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
@@ -1197,8 +1253,6 @@ async def ws_endpoint(websocket: WebSocket):
         await websocket.send_json({"type": "rehearsal_update", "song": rehearsal_state["song"]})
     # Metro state is not sent on reconnect — count-in is a one-shot action
     # triggered explicitly by the leader, not a persistent state to restore.
-    # Send current monitor config on connect
-    await websocket.send_json({"type": "monitor_config", **monitor_config})
     await manager.broadcast_roster()
     try:
         while True:
@@ -1248,7 +1302,30 @@ async def ws_endpoint(websocket: WebSocket):
                         })
                     elif msg.get("type") == "standby_logo_update":
                         await manager.broadcast({"type": "standby_logo_update"})
+                    elif msg.get("type") == "monitor_identify":
+                        # A monitor announcing its persistent id on connect.
+                        # Register the id→connection mapping and send back
+                        # that monitor's own config (creating a default
+                        # entry the first time this id is ever seen).
+                        mid = str(msg.get("monitor_id") or "").strip()[:64]
+                        if mid:
+                            manager.set_monitor_id(websocket, mid)
+                            if mid not in monitor_configs:
+                                monitor_configs[mid] = _default_monitor_config()
+                            monitor_configs[mid]["last_seen"] = time.time()
+                            _save_state("monitor_configs", monitor_configs)
+                            await websocket.send_json({
+                                "type": "monitor_config",
+                                "monitor_id": mid,
+                                **monitor_configs[mid],
+                            })
                     elif msg.get("type") == "monitor_config":
+                        # Config push targeted at one specific monitor (from
+                        # /monitor/setup or the leader's monitor panel).
+                        mid = str(msg.get("monitor_id") or "").strip()[:64]
+                        if not mid:
+                            continue
+                        cfg = monitor_configs.get(mid) or _default_monitor_config()
                         # Rotation: accept new `rotation` (0/90/-90) or legacy
                         # `rotated` boolean; keep both fields in sync.
                         if "rotation" in msg:
@@ -1259,20 +1336,26 @@ async def ws_endpoint(websocket: WebSocket):
                         elif "rotated" in msg:
                             _rot = 90 if msg.get("rotated") else 0
                         else:
-                            _rot = monitor_config.get("rotation", 0)
-                        monitor_config.update({
-                            "mode":      msg.get("mode",      monitor_config["mode"]),
-                            "cols":      bool(msg.get("cols",      monitor_config["cols"])),
-                            "fit":       bool(msg.get("fit",       monitor_config["fit"])),
-                            "hc":        bool(msg.get("hc",        monitor_config["hc"])),
-                            "portrait":  bool(msg.get("portrait",  monitor_config["portrait"])),
+                            _rot = cfg.get("rotation", 0)
+                        cfg.update({
+                            "name":      str(msg.get("name", cfg["name"]))[:60] or cfg["name"],
+                            "mode":      msg.get("mode",      cfg["mode"]),
+                            "cols":      bool(msg.get("cols",      cfg["cols"])),
+                            "fit":       bool(msg.get("fit",       cfg["fit"])),
+                            "hc":        bool(msg.get("hc",        cfg["hc"])),
+                            "portrait":  bool(msg.get("portrait",  cfg["portrait"])),
                             "rotation":  _rot,
                             "rotated":   _rot != 0,
-                            "usecapo":   bool(msg.get("usecapo",   monitor_config["usecapo"])),
-                            "fontscale": float(msg.get("fontscale", monitor_config["fontscale"])),
+                            "usecapo":   bool(msg.get("usecapo",   cfg["usecapo"])),
+                            "fontscale": float(msg.get("fontscale", cfg["fontscale"])),
                         })
-                        _save_state("monitor_config", monitor_config)
-                        await manager.broadcast({"type": "monitor_config", **monitor_config})
+                        monitor_configs[mid] = cfg
+                        _save_state("monitor_configs", monitor_configs)
+                        await manager.send_to_monitor(mid, {
+                            "type": "monitor_config",
+                            "monitor_id": mid,
+                            **cfg,
+                        })
                 except Exception:
                     pass
             elif data.startswith("name:"):
@@ -1382,6 +1465,46 @@ def get_server_info(request: Request):
         except ValueError:
             pass
     return {"ip": _get_lan_ip(), "port": port}
+
+
+@app.get("/api/monitors")
+def list_monitors():
+    """All monitors that have ever identified themselves, most recently
+    active first, with name/connected/last_seen so stale entries are
+    identifiable and safe to remove."""
+    items = [
+        {
+            "id":        mid,
+            "name":      cfg.get("name", "Unnamed Monitor"),
+            "connected": manager.monitor_connected(mid),
+            "last_seen": cfg.get("last_seen"),
+        }
+        for mid, cfg in monitor_configs.items()
+    ]
+    items.sort(key=lambda m: (not m["connected"], -(m["last_seen"] or 0)))
+    return items
+
+
+@app.delete("/api/monitors/{monitor_id}", dependencies=[Depends(require_auth)])
+def delete_monitor(monitor_id: str):
+    """Forget a monitor — e.g. one whose browser storage was cleared or
+    device was replaced, leaving an orphaned entry. Does not affect a
+    live connection; it just won't be remembered/configurable anymore."""
+    if monitor_id not in monitor_configs:
+        raise HTTPException(404, "Unknown monitor id")
+    del monitor_configs[monitor_id]
+    _save_state("monitor_configs", monitor_configs)
+    return {"ok": True}
+
+
+@app.get("/api/monitors/{monitor_id}/config")
+def get_monitor_config(monitor_id: str):
+    """A specific monitor's current config, for populating the setup page
+    or leader panel without waiting on a WebSocket round-trip."""
+    cfg = monitor_configs.get(monitor_id)
+    if cfg is None:
+        raise HTTPException(404, "Unknown monitor id")
+    return {"monitor_id": monitor_id, **cfg}
 
 @app.get("/sw.js")
 def service_worker():
