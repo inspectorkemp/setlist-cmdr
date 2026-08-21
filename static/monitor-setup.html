@@ -9,17 +9,25 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:      #0d0d12;
-    --surface: #14141c;
-    --card:    #1c1c28;
-    --border:  #2a2a3a;
-    --text:    #e8e8f0;
-    --dim:     #666680;
-    --amber:   #f59e0b;
-    --amber-glow: rgba(245,158,11,.12);
-    --green:   #22c55e;
-    --red:     #ef4444;
-    --teal:    #2dd4bf;
+    --bg:          #08080f;
+    --surface:     #111118;
+    --surface-2:   #18181f;
+    --card:        #111118;
+    --border:      #1c1c26;
+    --amber:       #f59e0b;
+    --amber-d:     #d97706;
+    --amber-bg:    rgba(245,158,11,.10);
+    --amber-glow:  rgba(245,158,11,.18);
+    --text:        #ebebf0;
+    --dim:         #52525b;
+    --green:       #22c55e;
+    --green-bg:    rgba(34,197,94,.10);
+    --red:         #ef4444;
+    --red-bg:      rgba(239,68,68,.10);
+    --blue:        #60a5fa;
+    --blue-bg:     rgba(96,165,250,.10);
+    --purple:      #a78bfa;
+    --teal:        #14b8a6;
   }
 
   body {
@@ -199,6 +207,36 @@
   #status-msg.ok  { color: var(--green); }
   #status-msg.err { color: var(--red); }
 
+  /* ── Toasts ────────────────────────────────────────────────
+     For one-off event confirmations (Applied, errors) — ported from the
+     leader view's toast pattern so feedback looks/behaves the same across
+     the app. The persistent #status-msg line above is deliberately kept
+     separate: it shows ambient connection state ("Connected", "Reconnecting…"),
+     which needs to stay visible, not auto-dismiss like a toast. */
+  #toast-wrap {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    z-index: 10000; display: flex; flex-direction: column; gap: 8px;
+    align-items: center; pointer-events: none;
+  }
+  .toast {
+    pointer-events: auto;
+    display: flex; align-items: center; gap: 16px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; min-width: 240px; max-width: 90vw;
+    box-shadow: 0 6px 24px rgba(0,0,0,.5);
+    font-family: 'DM Sans', sans-serif; font-size: .9rem;
+    animation: toast-in .2s ease;
+  }
+  .toast.err { border-color: var(--red); }
+  .toast.ok  { border-color: var(--green); }
+  .toast.leaving { opacity: 0; transition: opacity .2s ease; }
+  .toast-msg { flex: 1; }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
   a.monitor-link {
     display: block;
     text-align: center;
@@ -219,6 +257,30 @@
 </header>
 
 <main>
+
+  <!-- Monitor identity -->
+  <div class="section">
+    <div class="section-title">Which Monitor</div>
+    <div id="monitor-picker-wrap" style="margin-bottom:10px;">
+      <select id="monitor-picker" onchange="onPickMonitor(this.value)"
+              style="width:100%;background:var(--card);border:1px solid var(--border);
+                     border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;
+                     font-size:.9rem;padding:9px 10px;outline:none;">
+      </select>
+    </div>
+    <div id="monitor-picker-empty" style="display:none;font-size:.82rem;color:var(--dim);
+         padding:10px 0;">
+      No monitors have connected yet. Open the confidence monitor page on the display
+      first, then reload this page.
+    </div>
+    <label style="display:block;font-size:.72rem;color:var(--dim);margin:12px 0 5px;">
+      Name this monitor <span style="opacity:.7;">(e.g. "Stage Left")</span>
+    </label>
+    <input id="monitor-name-input" type="text" placeholder="Unnamed Monitor" maxlength="60"
+           style="width:100%;background:var(--card);border:1px solid var(--border);
+                  border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;
+                  font-size:.9rem;padding:9px 10px;outline:none;box-sizing:border-box;">
+  </div>
 
   <!-- View mode -->
   <div class="section">
@@ -336,6 +398,8 @@
 
   <a class="monitor-link" href="/monitor">← Back to monitor</a>
 
+  <div id="toast-wrap"></div>
+
 </main>
 
 <script>
@@ -349,6 +413,57 @@ let cfg = {
   fontscale: 1.0,
 };
 let ws = null;
+let targetMonitorId = new URLSearchParams(location.search).get('monitor') || null;
+
+// ── Monitor picker ──────────────────────────────────────────────
+async function loadMonitorList() {
+  let monitors = [];
+  try {
+    monitors = await (await fetch('/api/monitors')).json();
+  } catch { /* server not reachable yet — picker stays empty, connect() will retry */ }
+
+  const picker = document.getElementById('monitor-picker');
+  const empty  = document.getElementById('monitor-picker-empty');
+
+  if (!monitors.length) {
+    picker.style.display = 'none';
+    empty.style.display  = '';
+    document.getElementById('apply-btn').disabled = true;
+    return;
+  }
+  picker.style.display = '';
+  empty.style.display  = 'none';
+
+  picker.innerHTML = monitors.map(m =>
+    `<option value="${m.id}">${(m.connected ? '\u25cf ' : '\u25cb ') + escHtml(m.name)}</option>`
+  ).join('');
+
+  // Prefer the id from the URL (this monitor's own standby screen showed
+  // this exact link); otherwise keep whatever was already selected;
+  // otherwise fall back to the first monitor in the list.
+  const wanted = targetMonitorId && monitors.some(m => m.id === targetMonitorId)
+    ? targetMonitorId
+    : (monitors.some(m => m.id === picker.value) ? picker.value : monitors[0].id);
+  picker.value = wanted;
+  await onPickMonitor(wanted);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function onPickMonitor(id) {
+  targetMonitorId = id;
+  document.getElementById('apply-btn').disabled = !ws || ws.readyState !== 1;
+  try {
+    const c = await (await fetch(`/api/monitors/${encodeURIComponent(id)}/config`)).json();
+    applyUI(c);
+    document.getElementById('monitor-name-input').value =
+      (c.name && c.name !== 'Unnamed Monitor') ? c.name : '';
+  } catch {
+    showToast('Could not load that monitor’s settings', 'err');
+  }
+}
 
 // ── UI helpers ────────────────────────────────────────────────
 function setMode(val) {
@@ -377,6 +492,7 @@ function readToggles() {
   cfg.hc       = document.getElementById('tog-hc').checked;
   cfg.portrait = document.getElementById('tog-portrait').checked;
   cfg.usecapo  = document.getElementById('tog-usecapo').checked;
+  cfg.name     = document.getElementById('monitor-name-input').value.trim() || 'Unnamed Monitor';
   // rotation is set via setRotation(); also send legacy `rotated` for
   // older monitor builds that only understand the boolean.
   cfg.rotated  = cfg.rotation !== 0;
@@ -406,18 +522,11 @@ function connect() {
 
   ws.onopen = () => {
     setDot('on');
-    setStatus('Connected — adjust settings and tap Apply', '');
-    document.getElementById('apply-btn').disabled = false;
-  };
-
-  ws.onmessage = e => {
-    try {
-      const msg = JSON.parse(e.data);
-      // When we first connect, server sends back the current monitor config
-      if (msg.type === 'monitor_config') {
-        applyUI(msg);
-      }
-    } catch {}
+    if (targetMonitorId) {
+      setStatus('Connected — adjust settings and tap Apply', '');
+      document.getElementById('apply-btn').disabled = false;
+    }
+    loadMonitorList();
   };
 
   ws.onclose = () => {
@@ -432,13 +541,18 @@ function connect() {
 
 function applyConfig() {
   readToggles();
-  if (!ws || ws.readyState !== 1) {
-    setStatus('Not connected — cannot apply', 'err');
+  if (!targetMonitorId) {
+    showToast('No monitor selected', 'err');
     return;
   }
-  ws.send(JSON.stringify({ type: 'monitor_config', ...cfg }));
-  setStatus('Applied ✓', 'ok');
-  setTimeout(() => setStatus('Connected — adjust settings and tap Apply', ''), 2500);
+  if (!ws || ws.readyState !== 1) {
+    showToast('Not connected — cannot apply', 'err');
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'monitor_config', monitor_id: targetMonitorId, ...cfg }));
+  showToast('Applied ✓', 'ok');
+  // Refresh the picker's connected-dot / name text without losing selection
+  loadMonitorList();
 }
 
 function setDot(s) {
@@ -449,6 +563,24 @@ function setStatus(msg, cls) {
   const el = document.getElementById('status-msg');
   el.textContent = msg;
   el.className = cls || '';
+}
+
+// One-off event feedback (Applied, errors) — same visual/behavioral
+// pattern as the leader view's toasts, kept separate from setStatus()
+// above, which shows persistent ambient connection state instead.
+function showToast(message, cls) {
+  const wrap = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = 'toast' + (cls ? ' ' + cls : '');
+  const msg = document.createElement('span');
+  msg.className = 'toast-msg';
+  msg.textContent = message;
+  el.appendChild(msg);
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 200);
+  }, 2500);
 }
 
 connect();
