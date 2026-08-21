@@ -514,6 +514,30 @@ body.hi-contrast #l-song-content .cp-chords-row { color:#ffcc00; font-weight:700
                    onfocus="startPedalCapture('scrollup')"
                    onblur="stopPedalCapture()">
           </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              VIEW MODE key
+            </label>
+            <input id="pedal-mode-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('mode')"
+                   onblur="stopPedalCapture()">
+          </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              AUTOSCROLL key
+            </label>
+            <input id="pedal-autoscroll-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('autoscroll')"
+                   onblur="stopPedalCapture()">
+          </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn" style="font-size:.78rem;padding:5px 12px;"
@@ -537,6 +561,28 @@ body.hi-contrast #l-song-content .cp-chords-row { color:#ffcc00; font-weight:700
                text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">
           Confidence Monitor
         </label>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;">Configuring</label>
+          <div style="display:flex;gap:6px;">
+            <select id="mon-picker" onchange="onPickLeaderMonitor(this.value)"
+                    style="flex:1;background:var(--card);border:1px solid var(--border);
+                           border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;
+                           font-size:.85rem;padding:7px 10px;outline:none;">
+            </select>
+            <button class="btn danger" onclick="forgetLeaderMonitor()"
+                    style="flex-shrink:0;padding:7px 10px;font-size:.78rem;" title="Forget this monitor">✕</button>
+          </div>
+          <div id="mon-picker-empty" style="display:none;font-size:.75rem;color:var(--dim);margin-top:6px;">
+            No monitors have connected yet — open the confidence monitor page on the display first.
+          </div>
+        </div>
+        <div id="mon-name-wrap" style="margin-bottom:12px;">
+          <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;">Name</label>
+          <input id="mon-name-input" type="text" placeholder="Unnamed Monitor" maxlength="60"
+                 style="width:100%;background:var(--card);border:1px solid var(--border);
+                        border-radius:8px;color:var(--text);font-family:'DM Sans',sans-serif;
+                        font-size:.85rem;padding:7px 10px;outline:none;box-sizing:border-box;">
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           <div>
             <label style="font-size:.7rem;color:var(--dim);display:block;margin-bottom:5px;">View mode</label>
@@ -1115,6 +1161,7 @@ const NOTES   = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const ENHARM  = {Db:'C#',Eb:'D#',Gb:'F#',Ab:'G#',Bb:'A#'};
 
 function xpChord(chord, n) {
+  if (n === 0) return chord;
   const m = chord.match(/^([A-G][b#]?)(.*)/s);
   if (!m) return chord;
   let [, root, qual] = m;
@@ -2267,6 +2314,8 @@ document.addEventListener('keydown', e => {
     const prevKey       = localStorage.getItem('cmdr_pedal_prev')       || 'ArrowLeft';
     const scrollDownKey = localStorage.getItem('cmdr_pedal_scrolldown') || '';
     const scrollUpKey   = localStorage.getItem('cmdr_pedal_scrollup')   || '';
+    const modeKey       = localStorage.getItem('cmdr_pedal_mode')       || '';
+    const autoScrollKey = localStorage.getItem('cmdr_pedal_autoscroll') || '';
 
     if (e.key === nextKey) {
       e.preventDefault();
@@ -2288,6 +2337,16 @@ document.addEventListener('keydown', e => {
     if (scrollUpKey && e.key === scrollUpKey) {
       e.preventDefault();
       _pedalScroll('up');
+      return;
+    }
+    if (modeKey && e.key === modeKey) {
+      e.preventDefault();
+      lToggleMode();
+      return;
+    }
+    if (autoScrollKey && e.key === autoScrollKey) {
+      e.preventDefault();
+      lToggleScroll();
       return;
     }
   }
@@ -3740,19 +3799,12 @@ function openSettingsModal() {
     _keyLabel(localStorage.getItem('cmdr_pedal_scrolldown') || '');
   document.getElementById('pedal-scrollup-input').value =
     _keyLabel(localStorage.getItem('cmdr_pedal_scrollup') || '');
-  // Populate monitor fields
-  const mc = _lastMonitorConfig;
-  document.getElementById('mon-mode').value     = mc.mode      || 'chords';
-  document.getElementById('mon-cols').checked   = !!mc.cols;
-  document.getElementById('mon-fit').checked    = !!mc.fit;
-  document.getElementById('mon-hc').checked       = !!mc.hc;
-  document.getElementById('mon-portrait').checked = !!mc.portrait;
-  document.getElementById('mon-usecapo').checked  = mc.usecapo !== false;
-  document.getElementById('mon-rotation').value =
-    String((mc.rotation !== undefined) ? (parseInt(mc.rotation) || 0) : (mc.rotated ? 90 : 0));
-  const fs = parseFloat(mc.fontscale) || 1.0;
-  document.getElementById('mon-fontscale').value = fs;
-  document.getElementById('mon-fs-val').textContent = fs.toFixed(1) + 'x';
+  document.getElementById('pedal-mode-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_mode') || '');
+  document.getElementById('pedal-autoscroll-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_autoscroll') || '');
+  // Populate monitor picker + fields for whichever monitor is selected
+  loadLeaderMonitorList();
 }
 
 // ── Pedal key capture ─────────────────────────────────────────
@@ -3771,6 +3823,7 @@ function _keyLabel(key) {
 const _pedalInputId = {
   next: 'pedal-next-input', prev: 'pedal-prev-input',
   scrolldown: 'pedal-scrolldown-input', scrollup: 'pedal-scrollup-input',
+  mode: 'pedal-mode-input', autoscroll: 'pedal-autoscroll-input',
 };
 
 function startPedalCapture(which) {
@@ -3804,7 +3857,8 @@ function _capturePedalKey(e) {
   const key   = e.key;
   const storageKey = {
     next: 'cmdr_pedal_next', prev: 'cmdr_pedal_prev',
-    scrolldown: 'cmdr_pedal_scrolldown', scrollup: 'cmdr_pedal_scrollup'
+    scrolldown: 'cmdr_pedal_scrolldown', scrollup: 'cmdr_pedal_scrollup',
+    mode: 'cmdr_pedal_mode', autoscroll: 'cmdr_pedal_autoscroll'
   }[which];
   const inputId = _pedalInputId[which];
   if (!inputId) return false;
@@ -3815,11 +3869,14 @@ function _capturePedalKey(e) {
 }
 
 function setPedalPreset(preset) {
-  // next/prev are song navigation; scrolldown/scrollup are content scroll (optional)
+  // next/prev are song navigation; scrolldown/scrollup/mode/autoscroll are
+  // optional extras left blank by every preset, same as musician's presets —
+  // a simple 2-switch pedal has no spare key for a 3rd/4th action, so these
+  // stay available for manual binding regardless of which preset is chosen.
   const presets = {
-    arrows:     { next: 'ArrowRight', prev: 'ArrowLeft',  scrolldown: '',         scrollup: ''        },
-    pageupdown: { next: 'PageDown',   prev: 'PageUp',     scrolldown: '',         scrollup: ''        },
-    brackets:   { next: ']',          prev: '[',           scrolldown: '',         scrollup: ''        },
+    arrows:     { next: 'ArrowRight', prev: 'ArrowLeft',  scrolldown: '', scrollup: '', mode: '', autoscroll: '' },
+    pageupdown: { next: 'PageDown',   prev: 'PageUp',     scrolldown: '', scrollup: '', mode: '', autoscroll: '' },
+    brackets:   { next: ']',          prev: '[',           scrolldown: '', scrollup: '', mode: '', autoscroll: '' },
   };
   const p = presets[preset];
   if (!p) return;
@@ -3827,10 +3884,14 @@ function setPedalPreset(preset) {
   localStorage.setItem('cmdr_pedal_prev',       p.prev);
   localStorage.setItem('cmdr_pedal_scrolldown', p.scrolldown);
   localStorage.setItem('cmdr_pedal_scrollup',   p.scrollup);
+  localStorage.setItem('cmdr_pedal_mode',       p.mode);
+  localStorage.setItem('cmdr_pedal_autoscroll', p.autoscroll);
   document.getElementById('pedal-next-input').value       = _keyLabel(p.next);
   document.getElementById('pedal-prev-input').value       = _keyLabel(p.prev);
   document.getElementById('pedal-scrolldown-input').value = _keyLabel(p.scrolldown);
   document.getElementById('pedal-scrollup-input').value   = _keyLabel(p.scrollup);
+  document.getElementById('pedal-mode-input').value       = _keyLabel(p.mode);
+  document.getElementById('pedal-autoscroll-input').value = _keyLabel(p.autoscroll);
 }
 
 function resetPedal() {
@@ -3838,18 +3899,105 @@ function resetPedal() {
   localStorage.removeItem('cmdr_pedal_prev');
   localStorage.removeItem('cmdr_pedal_scrolldown');
   localStorage.removeItem('cmdr_pedal_scrollup');
+  localStorage.removeItem('cmdr_pedal_mode');
+  localStorage.removeItem('cmdr_pedal_autoscroll');
   document.getElementById('pedal-next-input').value       = _keyLabel('ArrowRight');
   document.getElementById('pedal-prev-input').value       = _keyLabel('ArrowLeft');
   document.getElementById('pedal-scrolldown-input').value = '';
   document.getElementById('pedal-scrollup-input').value   = '';
+  document.getElementById('pedal-mode-input').value       = '';
+  document.getElementById('pedal-autoscroll-input').value = '';
 }
 
 // ── Monitor remote config ─────────────────────────────────────
 let _lastMonitorConfig = { mode:'chords', cols:false, fit:false, hc:false, fontscale:1.0 };
 
+// ── Confidence monitor: which monitor is being configured ──────
+let _leaderMonitorId = localStorage.getItem('cmdr_last_monitor_id') || null;
+
+async function loadLeaderMonitorList() {
+  let monitors = [];
+  try {
+    monitors = await (await fetch('/api/monitors')).json();
+  } catch { /* transient — leave picker as-is */ }
+
+  const picker = document.getElementById('mon-picker');
+  const empty  = document.getElementById('mon-picker-empty');
+  const pushBtn = document.querySelector('button[onclick="pushMonitorConfig()"]');
+
+  if (!monitors.length) {
+    picker.style.display = 'none';
+    document.getElementById('mon-name-wrap').style.display = 'none';
+    empty.style.display = '';
+    if (pushBtn) pushBtn.disabled = true;
+    return;
+  }
+  picker.style.display = '';
+  document.getElementById('mon-name-wrap').style.display = '';
+  empty.style.display = 'none';
+  if (pushBtn) pushBtn.disabled = false;
+
+  picker.innerHTML = monitors.map(m =>
+    `<option value="${m.id}">${(m.connected ? '\u25cf ' : '\u25cb ') + escHtml(m.name)}</option>`
+  ).join('');
+
+  const wanted = _leaderMonitorId && monitors.some(m => m.id === _leaderMonitorId)
+    ? _leaderMonitorId
+    : monitors[0].id;
+  picker.value = wanted;
+  await onPickLeaderMonitor(wanted);
+}
+
+async function forgetLeaderMonitor() {
+  if (!_leaderMonitorId) return;
+  const name = document.getElementById('mon-picker').selectedOptions[0]?.textContent || 'this monitor';
+  if (!await appConfirm(`Forget ${name}? Its saved settings will be deleted.`, { okLabel: 'Forget', danger: true })) return;
+  try {
+    await api.delete(`/api/monitors/${encodeURIComponent(_leaderMonitorId)}`);
+    localStorage.removeItem('cmdr_last_monitor_id');
+    _leaderMonitorId = null;
+    loadLeaderMonitorList();
+  } catch (e) {
+    showToast('Could not remove monitor: ' + e.message);
+  }
+}
+
+async function onPickLeaderMonitor(id) {
+  _leaderMonitorId = id;
+  localStorage.setItem('cmdr_last_monitor_id', id);
+  try {
+    const mc = await (await fetch(`/api/monitors/${encodeURIComponent(id)}/config`)).json();
+    document.getElementById('mon-mode').value       = mc.mode || 'chords';
+    document.getElementById('mon-cols').checked     = !!mc.cols;
+    document.getElementById('mon-fit').checked      = !!mc.fit;
+    document.getElementById('mon-hc').checked       = !!mc.hc;
+    document.getElementById('mon-portrait').checked = !!mc.portrait;
+    document.getElementById('mon-usecapo').checked  = mc.usecapo !== false;
+    document.getElementById('mon-rotation').value =
+      String((mc.rotation !== undefined) ? (parseInt(mc.rotation) || 0) : (mc.rotated ? 90 : 0));
+    const fs = parseFloat(mc.fontscale) || 1.0;
+    document.getElementById('mon-fontscale').value = fs;
+    document.getElementById('mon-fs-val').textContent = fs.toFixed(1) + 'x';
+    document.getElementById('mon-name-input').value =
+      (mc.name && mc.name !== 'Unnamed Monitor') ? mc.name : '';
+  } catch {
+    const el = document.getElementById('mon-push-status');
+    el.textContent = 'Could not load that monitor\u2019s settings';
+    el.style.color = 'var(--red)';
+  }
+}
+
 function pushMonitorConfig() {
+  if (!_leaderMonitorId) {
+    const el = document.getElementById('mon-push-status');
+    el.textContent = 'No monitor selected';
+    el.style.color = 'var(--red)';
+    return;
+  }
   const cfg = {
-    type:      'monitor_config',
+    type:       'monitor_config',
+    monitor_id: _leaderMonitorId,
+    name:       document.getElementById('mon-name-input').value.trim() || 'Unnamed Monitor',
     mode:      document.getElementById('mon-mode').value,
     cols:      document.getElementById('mon-cols').checked,
     fit:       document.getElementById('mon-fit').checked,
@@ -3866,11 +4014,11 @@ function pushMonitorConfig() {
     return;
   }
   leaderWs.send(JSON.stringify(cfg));
-  _lastMonitorConfig = cfg;
   const el = document.getElementById('mon-push-status');
   el.textContent = 'Pushed';
   el.style.color = 'var(--green)';
   setTimeout(() => { el.textContent = ''; el.style.color = ''; }, 2500);
+  setTimeout(loadLeaderMonitorList, 400);   // refresh picker's name/dot
 }
 
 function _handleLeaderMonitorConfig(cfg) {
