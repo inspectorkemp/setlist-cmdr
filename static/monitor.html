@@ -8,14 +8,25 @@
 <link rel="stylesheet" href="/fonts.css">
 <style>
 :root {
-  --bg:     #08080f;
-  --surface:#111118;
-  --border: #1c1c26;
-  --amber:  #f59e0b;
-  --text:   #ebebf0;
-  --dim:    #52525b;
-  --green:  #22c55e;
-  --teal:   #0ea5e9;
+  --bg:          #08080f;
+  --surface:     #111118;
+  --surface-2:   #18181f;
+  --card:        #111118;
+  --border:      #1c1c26;
+  --amber:       #f59e0b;
+  --amber-d:     #d97706;
+  --amber-bg:    rgba(245,158,11,.10);
+  --amber-glow:  rgba(245,158,11,.18);
+  --text:        #ebebf0;
+  --dim:         #52525b;
+  --green:       #22c55e;
+  --green-bg:    rgba(34,197,94,.10);
+  --red:         #ef4444;
+  --red-bg:      rgba(239,68,68,.10);
+  --blue:        #60a5fa;
+  --blue-bg:     rgba(96,165,250,.10);
+  --purple:      #a78bfa;
+  --teal:        #14b8a6;
 }
 * { box-sizing:border-box; margin:0; padding:0; }
 html, body {
@@ -432,6 +443,8 @@ body.rotated.fit #content {
 <div id="standby">
   <img src="/static/img/logo_large.png" alt="Setlist CMDR" class="standby-logo-img">
   <div class="label">STANDBY</div>
+  <div id="standby-monitor-name" style="font-family:'DM Sans',sans-serif;font-size:clamp(.8rem,1.6vw,1.1rem);
+       color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-top:6px;display:none;"></div>
   <div style="margin-top:clamp(20px,3vh,40px);text-align:center;">
     <div style="font-family:'DM Mono',monospace;font-size:clamp(.65rem,1.2vw,.9rem);
          color:var(--dim);letter-spacing:1px;">CONFIGURE AT</div>
@@ -545,6 +558,33 @@ let slSongs     = [];
 let slId        = null;
 let rehearsalOn = false;
 let ws          = null;
+
+// ── Monitor identity ─────────────────────────────────────────
+// Persistent per-device id so this monitor's settings (mode, capo, layout,
+// rotation) stay independent of any other monitor connected to the same
+// server. Generated once and stored in this browser's localStorage — a
+// factory reset / different browser profile will get a fresh identity and
+// default config, same as a brand-new monitor would.
+function _genMonitorId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'mon-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+let monitorId = localStorage.getItem('monitor_id');
+if (!monitorId) {
+  monitorId = _genMonitorId();
+  localStorage.setItem('monitor_id', monitorId);
+}
+let monitorName = localStorage.getItem('monitor_name') || '';
+function _showMonitorName() {
+  const el = document.getElementById('standby-monitor-name');
+  if (!el) return;
+  if (monitorName && monitorName !== 'Unnamed Monitor') {
+    el.textContent = monitorName;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
 let monitorXp    = 0;  // current transpose from leader
 let monitorUseCapo = localStorage.getItem('mon_usecapo') !== 'false';
 
@@ -1220,11 +1260,11 @@ function applyMonitorConfig(msg) {
   // endpoint).
   const _su = document.getElementById('setup-url');
   if (_su) {
-    _su.textContent = location.origin + '/monitor/setup';   // immediate fallback
+    _su.textContent = location.origin + '/monitor/setup?monitor=' + monitorId;   // immediate fallback
     fetch('/api/server-info').then(r => r.json()).then(info => {
       if (info && info.ip) {
         const proto = location.protocol;
-        _su.textContent = `${proto}//${info.ip}:${info.port}/monitor/setup`;
+        _su.textContent = `${proto}//${info.ip}:${info.port}/monitor/setup?monitor=${monitorId}`;
       }
     }).catch(() => { /* keep the fallback already shown */ });
   }
@@ -1475,13 +1515,27 @@ function connect() {
   ws.onopen = () => {
     syncSamples = []; _syncDone = false;
     syncClock();
+    ws.send(JSON.stringify({ type: 'monitor_identify', monitor_id: monitorId }));
   };
 
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
     _lastWsMsgMs = Date.now();
     if (msg.type === 'live_update')      applyLive(msg);
-    if (msg.type === 'monitor_config')   applyMonitorConfig(msg);
+    if (msg.type === 'monitor_config') {
+      if (msg.monitor_id && msg.monitor_id !== monitorId) {
+        // Not meant for this monitor — ignore (should not normally happen,
+        // since the server targets config pushes to one monitor id, but
+        // this keeps a stray broadcast from cross-wiring two monitors).
+      } else {
+        if (msg.name !== undefined) {
+          monitorName = msg.name;
+          localStorage.setItem('monitor_name', monitorName);
+          _showMonitorName();
+        }
+        applyMonitorConfig(msg);
+      }
+    }
     if (msg.type === 'sync_reply')       handleSyncReply(msg);
     if (msg.type === 'rehearsal_update') {
       rehearsalOn = true;
@@ -1541,6 +1595,7 @@ function applyScroll(pct) {
 // ── Boot ──────────────────────────────────────────────────────
 (async function boot() {
   connect();
+  _showMonitorName();
   applyStandbyLogo();
   // Check current live/rehearsal state immediately
   try {
