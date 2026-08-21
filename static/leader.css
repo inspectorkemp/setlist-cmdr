@@ -13,6 +13,7 @@
   --amber:       #f59e0b;
   --amber-d:     #d97706;
   --amber-bg:    rgba(245,158,11,.10);
+  --amber-glow:  rgba(245,158,11,.18);
   --text:        #ebebf0;
   --dim:         #52525b;
   --green:       #22c55e;
@@ -245,7 +246,7 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 /* ══════════════════════════════════════════════════════════════
    LIVE PANEL
    ══════════════════════════════════════════════════════════════ */
-#live-panel { display: flex; flex-direction: column; overflow: hidden; }
+#live-panel.active { display: flex; flex-direction: column; overflow: hidden; }
 
 .live-card {
   flex: 1; display: flex; flex-direction: column; align-items: flex-start;
