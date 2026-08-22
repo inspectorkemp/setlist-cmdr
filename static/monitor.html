@@ -832,6 +832,12 @@ function chordToNashville(token, keyRoot) {
   const keyIdx  = NOTES.indexOf(keyRoot);
   const rootIdx = NOTES.indexOf(root);
   if (keyIdx < 0 || rootIdx < 0) return token;
+  // A suffix that starts with a bare digit (power chords like "5", or
+  // extensions like "7", "9", "13") would otherwise butt up against the
+  // degree number and read as an invalid two-digit number, e.g. "1" + "5"
+  // as "15". Suffixes starting with a letter (m, maj7, sus4, dim, m7b5)
+  // are already unambiguous and are left untouched.
+  if (qual && /^[0-9]/.test(qual)) qual = '(' + qual + ')';
   let out = NNS_DEGREE[(rootIdx - keyIdx + 12) % 12] + (qual || '');
   if (bass) {
     const b = ENHARM[bass] || bass;
