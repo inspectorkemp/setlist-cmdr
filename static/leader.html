@@ -538,6 +538,18 @@ body.hi-contrast #l-song-content .cp-chords-row { color:#ffcc00; font-weight:700
                    onfocus="startPedalCapture('autoscroll')"
                    onblur="stopPedalCapture()">
           </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--dim);display:block;margin-bottom:4px;">
+              METRO FLASH key
+            </label>
+            <input id="pedal-metro-input" readonly
+                   style="background:var(--card);border:1px solid var(--border);border-radius:8px;
+                          color:var(--text);font-family:'DM Mono',monospace;font-size:.9rem;
+                          padding:8px 12px;width:100%;outline:none;cursor:pointer;text-align:center;"
+                   placeholder="Click then press pedal…"
+                   onfocus="startPedalCapture('metro')"
+                   onblur="stopPedalCapture()">
+          </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn" style="font-size:.78rem;padding:5px 12px;"
@@ -2316,6 +2328,7 @@ document.addEventListener('keydown', e => {
     const scrollUpKey   = localStorage.getItem('cmdr_pedal_scrollup')   || '';
     const modeKey       = localStorage.getItem('cmdr_pedal_mode')       || '';
     const autoScrollKey = localStorage.getItem('cmdr_pedal_autoscroll') || '';
+    const metroKey       = localStorage.getItem('cmdr_pedal_metro')       || '';
 
     if (e.key === nextKey) {
       e.preventDefault();
@@ -2347,6 +2360,11 @@ document.addEventListener('keydown', e => {
     if (autoScrollKey && e.key === autoScrollKey) {
       e.preventDefault();
       lToggleScroll();
+      return;
+    }
+    if (metroKey && e.key === metroKey) {
+      e.preventDefault();
+      toggleMetro();
       return;
     }
   }
@@ -3803,6 +3821,8 @@ function openSettingsModal() {
     _keyLabel(localStorage.getItem('cmdr_pedal_mode') || '');
   document.getElementById('pedal-autoscroll-input').value =
     _keyLabel(localStorage.getItem('cmdr_pedal_autoscroll') || '');
+  document.getElementById('pedal-metro-input').value =
+    _keyLabel(localStorage.getItem('cmdr_pedal_metro') || '');
   // Populate monitor picker + fields for whichever monitor is selected
   loadLeaderMonitorList();
 }
@@ -3824,6 +3844,7 @@ const _pedalInputId = {
   next: 'pedal-next-input', prev: 'pedal-prev-input',
   scrolldown: 'pedal-scrolldown-input', scrollup: 'pedal-scrollup-input',
   mode: 'pedal-mode-input', autoscroll: 'pedal-autoscroll-input',
+  metro: 'pedal-metro-input',
 };
 
 function startPedalCapture(which) {
@@ -3858,7 +3879,8 @@ function _capturePedalKey(e) {
   const storageKey = {
     next: 'cmdr_pedal_next', prev: 'cmdr_pedal_prev',
     scrolldown: 'cmdr_pedal_scrolldown', scrollup: 'cmdr_pedal_scrollup',
-    mode: 'cmdr_pedal_mode', autoscroll: 'cmdr_pedal_autoscroll'
+    mode: 'cmdr_pedal_mode', autoscroll: 'cmdr_pedal_autoscroll',
+    metro: 'cmdr_pedal_metro'
   }[which];
   const inputId = _pedalInputId[which];
   if (!inputId) return false;
@@ -3874,9 +3896,9 @@ function setPedalPreset(preset) {
   // a simple 2-switch pedal has no spare key for a 3rd/4th action, so these
   // stay available for manual binding regardless of which preset is chosen.
   const presets = {
-    arrows:     { next: 'ArrowRight', prev: 'ArrowLeft',  scrolldown: '', scrollup: '', mode: '', autoscroll: '' },
-    pageupdown: { next: 'PageDown',   prev: 'PageUp',     scrolldown: '', scrollup: '', mode: '', autoscroll: '' },
-    brackets:   { next: ']',          prev: '[',           scrolldown: '', scrollup: '', mode: '', autoscroll: '' },
+    arrows:     { next: 'ArrowRight', prev: 'ArrowLeft',  scrolldown: '', scrollup: '', mode: '', autoscroll: '', metro: '' },
+    pageupdown: { next: 'PageDown',   prev: 'PageUp',     scrolldown: '', scrollup: '', mode: '', autoscroll: '', metro: '' },
+    brackets:   { next: ']',          prev: '[',           scrolldown: '', scrollup: '', mode: '', autoscroll: '', metro: '' },
   };
   const p = presets[preset];
   if (!p) return;
@@ -3886,12 +3908,14 @@ function setPedalPreset(preset) {
   localStorage.setItem('cmdr_pedal_scrollup',   p.scrollup);
   localStorage.setItem('cmdr_pedal_mode',       p.mode);
   localStorage.setItem('cmdr_pedal_autoscroll', p.autoscroll);
+  localStorage.setItem('cmdr_pedal_metro',      p.metro);
   document.getElementById('pedal-next-input').value       = _keyLabel(p.next);
   document.getElementById('pedal-prev-input').value       = _keyLabel(p.prev);
   document.getElementById('pedal-scrolldown-input').value = _keyLabel(p.scrolldown);
   document.getElementById('pedal-scrollup-input').value   = _keyLabel(p.scrollup);
   document.getElementById('pedal-mode-input').value       = _keyLabel(p.mode);
   document.getElementById('pedal-autoscroll-input').value = _keyLabel(p.autoscroll);
+  document.getElementById('pedal-metro-input').value      = _keyLabel(p.metro);
 }
 
 function resetPedal() {
@@ -3901,12 +3925,14 @@ function resetPedal() {
   localStorage.removeItem('cmdr_pedal_scrollup');
   localStorage.removeItem('cmdr_pedal_mode');
   localStorage.removeItem('cmdr_pedal_autoscroll');
+  localStorage.removeItem('cmdr_pedal_metro');
   document.getElementById('pedal-next-input').value       = _keyLabel('ArrowRight');
   document.getElementById('pedal-prev-input').value       = _keyLabel('ArrowLeft');
   document.getElementById('pedal-scrolldown-input').value = '';
   document.getElementById('pedal-scrollup-input').value   = '';
   document.getElementById('pedal-mode-input').value       = '';
   document.getElementById('pedal-autoscroll-input').value = '';
+  document.getElementById('pedal-metro-input').value      = '';
 }
 
 // ── Monitor remote config ─────────────────────────────────────
