@@ -158,7 +158,7 @@ The monitor at /monitor shows the song title, key, BPM, and time signature in la
 
 ## Bluetooth page turner pedals
 
-**Leader:** Pair via Bluetooth, assign keys in Settings. Actions: Next Song, Prev Song, Scroll Down, Scroll Up, Toggle View Mode, Toggle Autoscroll. Presets for Arrow keys, Page Up/Down, and bracket keys. Presets only bind the two navigation keys; the scroll, mode, and autoscroll actions are left unbound so you can assign them by hand if your pedal has more than two switches.
+**Leader:** Pair via Bluetooth, assign keys in Settings. Actions: Next Song, Prev Song, Scroll Down, Scroll Up, Toggle View Mode, Toggle Autoscroll, Toggle Metro Flash. Presets for Arrow keys, Page Up/Down, and bracket keys. Presets only bind the two navigation keys; the scroll, mode, autoscroll, and metro actions are left unbound so you can assign them by hand if your pedal has more than two switches.
 
 **Musicians:** Tap the gear button in the header. Actions: Scroll Down, Scroll Up, Toggle View Mode, Toggle Autoscroll. Presets for Arrow keys and Page Up/Down.
 
